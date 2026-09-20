@@ -1,0 +1,6 @@
+{
+  "name": "ICALLOG — Creative AI & 3D WebGL Gateway",
+  "description": "Comprehensive creative suite featuring Web Speech API voice navigation, AI Film Studio, Office Suite, Design & Identity tools, Three.js 3D WebGL engine, and universal workspace.",
+  "requestFramePermissions": ["microphone", "camera", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

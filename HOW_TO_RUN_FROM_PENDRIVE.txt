@@ -1,0 +1,37 @@
+====================================================================
+  iCALLOG CREATIVE STUDIO - PENDRIVE / PORTABLE RUNNER GUIDE
+====================================================================
+
+Haan! Aap iss pure project ko easily Pen Drive me daal kar kisi bhi computer
+ya laptop me bagair internet / local setup ke run kar sakte hain.
+
+--------------------------------------------------------------------
+OPTION 1: Direct Web Browser Run (No Installation Needed)
+--------------------------------------------------------------------
+1. Pen Drive me 'dist' folder ko copy karein.
+2. 'dist/index.html' file par double click karke kisi bhi Web Browser
+   (Chrome, Edge, Brave, Firefox) me direct kholein.
+3. Aapka poora UI, Local Vault, aur Standalone Features direct chalenge!
+
+--------------------------------------------------------------------
+OPTION 2: Complete Source Code & Offline Server Run
+--------------------------------------------------------------------
+1. Pen Drive me poora project folder copy karein.
+2. Kisi bhi laptop/PC me Pen Drive lagayein.
+3. Terminal / Command Prompt khol kar folder me jayein.
+4. Command chalayein:
+   - npm install   (agar pehli baar chalayein)
+   - npm run dev   (ya 'npm start' for compiled production server)
+5. Browser me http://localhost:3000 kholein!
+
+--------------------------------------------------------------------
+OPTION 3: Built-in 'Export Project' Button (Navbar)
+--------------------------------------------------------------------
+- App ke top right Navbar me 'Export' button par click karein.
+- Ek single `.zip` file download hogi jiske andar aapke saare saved projects,
+  media files (photos, audio, videos), aur manifest data auto-package ho jayenge.
+- Us `.zip` file ko aap direct Pen Drive me save kar sakte hain!
+
+====================================================================
+Thank you for using iCALLOG Creative Gateway!
+====================================================================
