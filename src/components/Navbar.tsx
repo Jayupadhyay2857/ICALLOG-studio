@@ -37,6 +37,9 @@ import {
   Camera,
   Download,
   FolderDown,
+  Share2,
+  Users,
+  Gamepad2,
 } from 'lucide-react';
 import { UserProfile, ActiveTab, ProjectItem } from '../types.ts';
 import { useLanguage } from '../context/LanguageContext.tsx';
@@ -299,6 +302,16 @@ Thank you for building with AI Studio!
       badge: 'Hub',
     },
     {
+      id: 'game_studio_search',
+      title: 'AI Game Maker & Interactive Arcade (60 FPS Canvas)',
+      description: 'Create & test play Space Shooters, Neon Runners, Brick Breakers, Cyber Snake, and export standalone HTML5 games',
+      category: 'Game Studio',
+      itemType: 'tool',
+      icon: <Gamepad2 className="w-4 h-4 text-amber-400" />,
+      tab: 'game_studio',
+      badge: '60 FPS',
+    },
+    {
       id: 'pro_camera_search',
       title: 'Pro Camera Studio (8K HDR • Zoom • Video • Sound)',
       description: 'Click high-res photos, record 4K video, record voice mic with audio FX & store in media vault',
@@ -556,6 +569,56 @@ Thank you for building with AI Studio!
       icon: <Video className="w-4 h-4 text-cyan-400" />,
       tab: 'video_audio',
       badge: 'Video',
+    },
+    {
+      id: 'auto_dubbing_search',
+      title: 'AI Multi-Language Video Dubbing & Subtitles',
+      description: 'Voiceover and lip-sync video dubbing into Hindi, English, Spanish, Japanese & 18+ languages with .SRT export',
+      category: 'Audio & Video',
+      itemType: 'tool',
+      icon: <Globe className="w-4 h-4 text-cyan-400" />,
+      tab: 'auto_dubbing',
+      badge: 'Dubbing',
+    },
+    {
+      id: 'creator_marketplace_search',
+      title: 'Creator Marketplace & Asset Monetization Store',
+      description: 'Buy and sell 3D rigged models, AI song stems, 60fps VFX, and prompt packs with direct SWIFT/UPI payouts',
+      category: 'Marketplace',
+      itemType: 'tool',
+      icon: <CreditCard className="w-4 h-4 text-emerald-400" />,
+      tab: 'creator_marketplace',
+      badge: 'Store',
+    },
+    {
+      id: 'social_publisher_search',
+      title: '1-Click Social Auto-Publisher & Schedule Hub',
+      description: 'Directly schedule and broadcast 3D clips, AI music, and viral videos to YouTube Shorts, Instagram Reels, TikTok & X',
+      category: 'Social & Viral',
+      itemType: 'tool',
+      icon: <Share2 className="w-4 h-4 text-purple-400" />,
+      tab: 'social_publisher',
+      badge: 'Publisher',
+    },
+    {
+      id: 'manga_storyboard_search',
+      title: 'AI Storyboard & Comic / Manga Strip Studio',
+      description: 'Convert screenplay scenes into multi-panel manga strips, webtoons, and Hollywood camera angle storyboards',
+      category: 'Story & Screenplay',
+      itemType: 'tool',
+      icon: <Film className="w-4 h-4 text-amber-400" />,
+      tab: 'manga_storyboard',
+      badge: 'Manga',
+    },
+    {
+      id: 'live_collab_search',
+      title: 'Live Multi-User Collaborative Canvas & Team Hub',
+      description: 'Real-time shared whiteboard, multiplayer cursor beacons, 3D pins, audio stems, and live team production chat',
+      category: 'Collaboration',
+      itemType: 'tool',
+      icon: <Users className="w-4 h-4 text-teal-400" />,
+      tab: 'live_collab',
+      badge: 'Multiplayer',
     },
     {
       id: 'voice_converter',
@@ -934,6 +997,14 @@ Thank you for building with AI Studio!
   const tabs: { id: ActiveTab; label: string; icon: string; badge?: string }[] = [
     { id: 'role_dashboard', label: 'Dashboard', icon: getPersonaConfig(user.personaType).badgeEmoji || '✨', badge: getPersonaConfig(user.personaType).badgeLabel },
     { id: 'projects_hub', label: t('nav_projects_hub'), icon: '📁', badge: 'Hub' },
+    { id: 'game_studio', label: 'AI Game Maker', icon: '🎮', badge: 'Play & Build' },
+    { id: 'time_capsule', label: 'Time Capsule', icon: '⏳', badge: '200-Yr Vault' },
+    { id: 'digital_twin', label: 'Digital Twin AI', icon: '🧬', badge: 'Hologram' },
+    { id: 'neural_cinema', label: 'Neural Cinema', icon: '🧠', badge: 'Mind-to-Film' },
+    { id: 'metaverse_world', label: 'Metaverse World', icon: '🌐', badge: '3D Spatial' },
+    { id: 'master_toolkit', label: 'A-to-Z Master Toolkit', icon: '🌟', badge: 'A to Z' },
+    { id: 'collab_timeline', label: 'Whiteboard & Timelines', icon: '📋', badge: 'Gantt & Kanban' },
+    { id: 'podcast_studio', label: 'AI Podcast Co-Host', icon: '🎙️', badge: 'Dual-Voice' },
     { id: 'pro_camera', label: 'Pro Camera', icon: '📸', badge: '8K HDR' },
     { id: 'film_studio', label: t('nav_film_studio'), icon: '🎬', badge: 'Cinema' },
     { id: 'song_studio', label: t('nav_song_studio'), icon: '🎵', badge: 'A-Z' },
@@ -941,9 +1012,14 @@ Thank you for building with AI Studio!
     { id: 'office_suite', label: t('nav_office_suite'), icon: '📄', badge: 'New' },
     { id: 'design_studio', label: t('nav_design_studio'), icon: '🎨', badge: 'Pro' },
     { id: 'meme_gif_studio', label: 'Meme & GIF', icon: '🤡', badge: 'Viral' },
-    { id: '3d_engine', label: t('nav_3d_engine'), icon: '🎮' },
+    { id: '3d_engine', label: t('nav_3d_engine'), icon: '🧊' },
     { id: 'image_studio', label: t('nav_image_studio'), icon: '🖼️' },
     { id: 'video_audio', label: t('nav_video_audio'), icon: '🎥' },
+    { id: 'auto_dubbing', label: 'AI Dubbing & Subs', icon: '🎙️', badge: '18+ Lang' },
+    { id: 'creator_marketplace', label: 'Creator Store', icon: '🏪', badge: 'Monetize' },
+    { id: 'social_publisher', label: 'Social Publisher', icon: '📱', badge: 'Shorts/Reels' },
+    { id: 'manga_storyboard', label: 'Manga & Comic', icon: '📚', badge: 'Panels' },
+    { id: 'live_collab', label: 'Live Collab Canvas', icon: '👥', badge: 'Multiplayer' },
     { id: 'voice_converter', label: t('nav_voice_converter'), icon: '🎙️' },
     { id: 'user_manual', label: t('nav_user_manual'), icon: '📖' },
   ];
@@ -1196,6 +1272,26 @@ Thank you for building with AI Studio!
               <span className="hidden xl:inline text-[10px]">Export</span>
             </button>
 
+            {/* Global Payment & Worldwide Status Indicator */}
+            <button
+              id="navbar-global-payment-btn"
+              onClick={() => openProfileModal('global_payments')}
+              title={`Global Payment Integration: ${
+                user.isGlobalReady !== false
+                  ? 'Global-Ready Verified (SWIFT, SEPA & Digital Wallets Active)'
+                  : 'Connect Worldwide Bank / Wallet'
+              }`}
+              className="hidden lg:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-emerald-500/40 hover:border-emerald-400 text-emerald-300 font-bold text-[10px] transition-all hover:scale-105 shrink-0 shadow-xs cursor-pointer"
+            >
+              <Globe className="w-3 h-3 text-emerald-400" />
+              <span className="text-[10px] font-mono font-bold">
+                {user.isGlobalReady !== false ? 'Global-Ready' : 'Global Pay'}
+              </span>
+              {user.isGlobalReady !== false && (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              )}
+            </button>
+
             {/* User Profile Badge */}
             <button
               id="user-profile-settings-btn"
@@ -1215,16 +1311,27 @@ Thank you for building with AI Studio!
               </div>
             </button>
 
-            {/* Omni Enhance AI Universal Prompt Booster Trigger */}
+            {/* Omni Enhance AI Universal Prompt Booster Trigger - Symbolic Jewel Icon Badge */}
             {openOmniEnhanceModal && (
               <button
                 id="omni-enhance-nav-btn"
                 onClick={openOmniEnhanceModal}
-                title="Omni Enhance AI (यूनिवर्सल प्रॉम्प्ट बूस्टर - Image, Video, Music, Docs, 3D)"
-                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-cyan-950/50 flex items-center gap-1.5 transition-all hover:scale-105 border border-cyan-400/40"
+                title="✨ Omni Enhance AI (यूनिवर्सल प्रॉम्प्ट बूस्टर - Image, Video, Music, Docs, 3D)"
+                className="relative group p-1.5 sm:px-2.5 sm:py-1 rounded-xl bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-cyan-950/50 flex items-center justify-center gap-1.5 transition-all hover:scale-105 border border-cyan-400/50 cursor-pointer overflow-hidden"
               >
-                <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
-                <span className="font-['Syne'] font-extrabold tracking-wide">✨ Omni Enhance AI</span>
+                {/* Radiant Shimmer Sweep */}
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
+
+                {/* Sparkling Icon Symbol with Ping Beacon */}
+                <div className="relative flex items-center justify-center">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse group-hover:rotate-12 transition-transform" />
+                  <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-cyan-300 animate-ping" />
+                </div>
+
+                {/* Symbolic Badge Label */}
+                <span className="font-['Syne'] font-extrabold tracking-wider text-[11px] bg-clip-text text-transparent bg-gradient-to-r from-white via-cyan-100 to-amber-200 hidden sm:inline">
+                  ✨ Omni
+                </span>
               </button>
             )}
 
@@ -1476,10 +1583,13 @@ Thank you for building with AI Studio!
                       openOmniEnhanceModal();
                       setMobileMenuOpen(false);
                     }}
-                    className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-cyan-600 via-indigo-600 to-purple-600 hover:from-cyan-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-cyan-950/40"
+                    className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-cyan-600 via-indigo-600 to-purple-600 hover:from-cyan-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-cyan-950/40 border border-cyan-400/40"
                   >
-                    <Sparkles className="w-4 h-4 text-cyan-200" />
-                    <span>Omni Enhance AI (यूनिवर्सल प्रॉम्प्ट बूस्टर)</span>
+                    <div className="relative flex items-center justify-center">
+                      <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+                      <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-cyan-300 animate-ping" />
+                    </div>
+                    <span className="font-['Syne'] font-extrabold tracking-wide">✨ Omni Enhance AI (यूनिवर्सल प्रॉम्प्ट बूस्टर)</span>
                   </button>
                 )}
                 <div className="flex flex-wrap sm:flex-nowrap gap-2">

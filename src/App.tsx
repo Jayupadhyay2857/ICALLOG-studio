@@ -43,6 +43,19 @@ import { VoiceNavigationOverlay } from './components/VoiceNavigationOverlay.tsx'
 import { OmniEnhanceModal } from './components/OmniEnhanceModal.tsx';
 import { LanguageProvider } from './context/LanguageContext.tsx';
 import { syncUserState, initOfflineSyncListeners } from './lib/offlineSync.ts';
+import { AutoDubbingStudio } from './components/AutoDubbingStudio.tsx';
+import { CreatorMarketplaceStudio } from './components/CreatorMarketplaceStudio.tsx';
+import { SocialPublisherStudio } from './components/SocialPublisherStudio.tsx';
+import { MangaStoryboardStudio } from './components/MangaStoryboardStudio.tsx';
+import { LiveCollabCanvasStudio } from './components/LiveCollabCanvasStudio.tsx';
+import { GameStudio } from './components/GameStudio.tsx';
+import { TimeCapsuleStudio } from './components/TimeCapsuleStudio.tsx';
+import { DigitalTwinStudio } from './components/DigitalTwinStudio.tsx';
+import { NeuralCinemaStudio } from './components/NeuralCinemaStudio.tsx';
+import { MetaverseWorldStudio } from './components/MetaverseWorldStudio.tsx';
+import { MasterToolkitStudio } from './components/MasterToolkitStudio.tsx';
+import { CollabWhiteboardTimelineStudio } from './components/CollabWhiteboardTimelineStudio.tsx';
+import { PodcastStudio } from './components/PodcastStudio.tsx';
 import { getUserStateFromIDB } from './lib/offlineIndexedDB.ts';
 import { registerVoiceHandlers } from './lib/voiceNavigation.ts';
 import { executeAutoSave, extendSessionToken } from './lib/sessionManager.ts';
@@ -364,6 +377,64 @@ export default function App() {
             onUpdateUser={handleUpdateUser}
           />
         )}
+        {activeTab === 'game_studio' && (
+          <GameStudio
+            user={user}
+            tokenBalance={user.tokenBalance}
+            setActiveTab={(tab) => setActiveTab(tab as ActiveTab)}
+            openPaymentModal={() => setIsProfileModalOpen(true)}
+            onNotify={notify}
+          />
+        )}
+        {activeTab === 'time_capsule' && (
+          <TimeCapsuleStudio
+            user={user}
+            setActiveTab={(tab) => setActiveTab(tab as ActiveTab)}
+            onNotify={notify}
+          />
+        )}
+        {activeTab === 'digital_twin' && (
+          <DigitalTwinStudio
+            user={user}
+            setActiveTab={(tab) => setActiveTab(tab as ActiveTab)}
+            onNotify={notify}
+          />
+        )}
+        {activeTab === 'neural_cinema' && (
+          <NeuralCinemaStudio
+            user={user}
+            setActiveTab={(tab) => setActiveTab(tab as ActiveTab)}
+            onNotify={notify}
+          />
+        )}
+        {activeTab === 'metaverse_world' && (
+          <MetaverseWorldStudio
+            user={user}
+            setActiveTab={(tab) => setActiveTab(tab as ActiveTab)}
+            onNotify={notify}
+          />
+        )}
+        {activeTab === 'master_toolkit' && (
+          <MasterToolkitStudio
+            user={user}
+            setActiveTab={(tab) => setActiveTab(tab as ActiveTab)}
+            onNotify={notify}
+          />
+        )}
+        {activeTab === 'collab_timeline' && (
+          <CollabWhiteboardTimelineStudio
+            user={user}
+            setActiveTab={(tab) => setActiveTab(tab as ActiveTab)}
+            onNotify={notify}
+          />
+        )}
+        {activeTab === 'podcast_studio' && (
+          <PodcastStudio
+            user={user}
+            setActiveTab={(tab) => setActiveTab(tab as ActiveTab)}
+            onNotify={notify}
+          />
+        )}
         {activeTab === 'song_studio' && (
           <SongMusicStudio
             user={user}
@@ -417,6 +488,37 @@ export default function App() {
         {activeTab === 'voice_converter' && (
           <VoiceConverter
             tokenBalance={user.tokenBalance}
+            onNotify={notify}
+          />
+        )}
+        {activeTab === 'auto_dubbing' && (
+          <AutoDubbingStudio
+            user={user}
+            onNotify={notify}
+          />
+        )}
+        {activeTab === 'creator_marketplace' && (
+          <CreatorMarketplaceStudio
+            user={user}
+            onNotify={notify}
+            onOpenGlobalPayments={() => setIsProfileModalOpen(true)}
+          />
+        )}
+        {activeTab === 'social_publisher' && (
+          <SocialPublisherStudio
+            user={user}
+            onNotify={notify}
+          />
+        )}
+        {activeTab === 'manga_storyboard' && (
+          <MangaStoryboardStudio
+            user={user}
+            onNotify={notify}
+          />
+        )}
+        {activeTab === 'live_collab' && (
+          <LiveCollabCanvasStudio
+            user={user}
             onNotify={notify}
           />
         )}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Film, Music, Video, Box, FolderKanban, ShieldCheck, ArrowRight, Zap, Globe2, Award, Cpu, BookOpen, Layers, Mic, Palette, LogIn, UserCheck } from 'lucide-react';
+import { Sparkles, Film, Music, Video, Box, FolderKanban, ShieldCheck, ArrowRight, Zap, Globe2, Award, Cpu, BookOpen, Layers, Mic, Palette, LogIn, UserCheck, Gamepad2 } from 'lucide-react';
 import { ActiveTab, UserProfile } from '../types.ts';
 
 interface WelcomeBlogProps {
@@ -177,7 +177,19 @@ export const WelcomeBlog: React.FC<WelcomeBlogProps> = ({ onSelectTab, user, onO
       </div>
 
       {/* Additional Studio Suites Quick Access */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div 
+          onClick={() => onSelectTab('game_studio')}
+          className="p-5 rounded-2xl bg-slate-950 border border-indigo-500/40 hover:border-cyan-400 cursor-pointer transition-all space-y-2 group shadow-lg shadow-indigo-950/30"
+        >
+          <div className="flex items-center justify-between">
+            <span className="p-2 rounded-xl bg-indigo-500/20 text-cyan-400"><Gamepad2 className="w-4 h-4" /></span>
+            <ArrowRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-cyan-400 transition-colors" />
+          </div>
+          <h4 className="text-sm font-bold text-white font-['Syne']">AI Game Maker & Arcade</h4>
+          <p className="text-[11px] text-slate-300">Playable 2D/3D arcade games, physics tuning, chiptune sound synth & standalone HTML5 export.</p>
+        </div>
+
         <div 
           onClick={() => onSelectTab('image_studio')}
           className="p-5 rounded-2xl bg-slate-950 border border-slate-800 hover:border-pink-500/40 cursor-pointer transition-all space-y-2 group"

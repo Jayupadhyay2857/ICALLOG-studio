@@ -27,6 +27,7 @@ import {
 import { UserProfile } from '../types.ts';
 import { UniversalMediaCaptureToolbar } from './UniversalMediaCaptureToolbar.tsx';
 import { enhancePrompt, generateAiDocument } from '../lib/api.ts';
+import { safeDownloadMedia } from '../lib/downloadHelper.ts';
 
 interface OfficeSuiteProps {
   user?: UserProfile;
@@ -254,25 +255,22 @@ export const OfficeSuite: React.FC<OfficeSuiteProps> = ({
   };
 
   const handleDownloadDoc = (format: 'txt' | 'doc' | 'md') => {
-    let mime = 'text/plain';
+    let mime = 'text/plain;charset=utf-8';
     let ext = format;
     let data = docContent;
 
     if (format === 'doc') {
-      mime = 'application/msword';
+      mime = 'application/msword;charset=utf-8';
       ext = 'doc';
       data = `<html><head><meta charset="utf-8"><title>${docTitle}</title><style>body{font-family:Arial,sans-serif;line-height:1.6;padding:20px;}</style></head><body><pre style="white-space:pre-wrap;font-family:inherit;">${docContent}</pre></body></html>`;
     }
 
-    const blob = new Blob([data], { type: mime });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${docTitle.toLowerCase().replace(/[^a-z0-9]/g, '_')}.${ext}`;
-    a.click();
-    URL.revokeObjectURL(url);
-
-    onNotify('Document Exported', `Saved as .${ext} file successfully!`, 'success');
+    const filename = `${docTitle.toLowerCase().replace(/[^a-z0-9]/g, '_')}.${ext}`;
+    safeDownloadMedia(data, filename, {
+      type: 'doc',
+      mimeType: mime,
+      onNotify: (title, desc) => onNotify(title, desc, 'success'),
+    });
   };
 
   const handleCopyDoc = () => {
@@ -331,14 +329,12 @@ export const OfficeSuite: React.FC<OfficeSuiteProps> = ({
 
   const handleDownloadPPT = () => {
     const jsonStr = JSON.stringify({ presentationTitle: 'iCALLOG Presentation', slides, theme: slideTheme }, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `presentation_deck_${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    onNotify('Slides Exported', 'Exported slide deck in structured format.', 'success');
+    const filename = `presentation_deck_${Date.now()}.json`;
+    safeDownloadMedia(jsonStr, filename, {
+      type: 'json',
+      mimeType: 'application/json',
+      onNotify: (title, desc) => onNotify(title, desc, 'success'),
+    });
   };
 
   /* --------------------------------------------------------------------------
@@ -405,14 +401,12 @@ export const OfficeSuite: React.FC<OfficeSuiteProps> = ({
       )
       .join('\n');
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `financial_ledger_${Date.now()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    onNotify('Spreadsheet Exported', 'Downloaded complete ledger as .CSV file!', 'success');
+    const filename = `financial_ledger_${Date.now()}.csv`;
+    safeDownloadMedia(csvContent, filename, {
+      type: 'text',
+      mimeType: 'text/csv;charset=utf-8;',
+      onNotify: (title, desc) => onNotify(title, desc, 'success'),
+    });
   };
 
   const handleAddRow = () => {

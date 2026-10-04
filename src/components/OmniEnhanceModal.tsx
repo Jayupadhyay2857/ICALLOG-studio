@@ -33,6 +33,7 @@ import {
   generateAiSongLyrics,
 } from '../lib/api.ts';
 import { ActiveTab, UserProfile } from '../types.ts';
+import { safeDownloadMedia } from '../lib/downloadHelper.ts';
 
 interface OmniEnhanceModalProps {
   isOpen: boolean;
@@ -1015,15 +1016,19 @@ export const OmniEnhanceModal: React.FC<OmniEnhanceModalProps> = ({
                             <Check className="w-4 h-4" /> 8K Photorealistic AI Image:
                           </span>
                           <div className="flex items-center gap-2">
-                            <a
-                              href={generatedPreviewUrl}
-                              download="iCALLOG_8K_Image.png"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs flex items-center gap-1 transition-colors"
+                            <button
+                              type="button"
+                              onClick={() => {
+                                safeDownloadMedia(generatedPreviewUrl, `iCALLOG_8K_Master_${Date.now()}.png`, {
+                                  type: 'image',
+                                  onSuccess: (msg) => onNotify('Download Complete', msg, 'success'),
+                                  onError: (err) => onNotify('Download Notice', err, 'info'),
+                                });
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs flex items-center gap-1 transition-colors cursor-pointer"
                             >
                               <Download className="w-3.5 h-3.5" /> Download 8K
-                            </a>
+                            </button>
                             <a
                               href={generatedPreviewUrl}
                               target="_blank"
@@ -1055,13 +1060,19 @@ export const OmniEnhanceModal: React.FC<OmniEnhanceModalProps> = ({
                             <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-cyan-950 text-cyan-300 border border-cyan-800">
                               60 FPS • 8K Master
                             </span>
-                            <a
-                              href={generatedVideoUrl}
-                              download="iCALLOG_60fps_Clip.mp4"
-                              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs flex items-center gap-1"
+                            <button
+                              type="button"
+                              onClick={() => {
+                                safeDownloadMedia(generatedVideoUrl, `iCALLOG_60fps_Cinema_${Date.now()}.mp4`, {
+                                  type: 'video',
+                                  onSuccess: (msg) => onNotify('Download Complete', msg, 'success'),
+                                  onError: (err) => onNotify('Download Notice', err, 'info'),
+                                });
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs flex items-center gap-1 cursor-pointer"
                             >
                               <Download className="w-3.5 h-3.5" /> Save Video
-                            </a>
+                            </button>
                           </div>
                         </div>
                         <div className="relative aspect-video rounded-2xl overflow-hidden border border-cyan-500/40 shadow-2xl bg-black">

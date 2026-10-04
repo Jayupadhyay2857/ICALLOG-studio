@@ -38,6 +38,7 @@ import { DrumMachineDevice } from './DrumMachineDevice.tsx';
 import { StudioFXRackDevice } from './StudioFXRackDevice.tsx';
 import { DJTurntableDevice } from './DJTurntableDevice.tsx';
 import { UniversalMediaCaptureToolbar } from './UniversalMediaCaptureToolbar.tsx';
+import { safeDownloadMedia } from '../lib/downloadHelper.ts';
 
 interface SongMusicStudioProps {
   user?: UserProfile;
@@ -918,13 +919,20 @@ export const SongMusicStudio: React.FC<SongMusicStudioProps> = ({
                   </button>
                 </div>
 
-                <a
-                  href={composedSongUrl}
-                  download={`AI_Song_${selectedGenre.letter}_${Date.now()}.mp3`}
-                  className="w-full py-2.5 rounded-xl bg-purple-950 hover:bg-purple-900 border border-purple-800 text-purple-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                <button
+                  type="button"
+                  onClick={() => {
+                    const filename = `AI_Song_${selectedGenre.letter}_${Date.now()}.wav`;
+                    safeDownloadMedia(composedSongUrl, filename, {
+                      type: 'audio',
+                      onSuccess: (msg) => onNotify?.('Download Complete', msg, 'success'),
+                      onError: (err) => onNotify?.('Download Notice', err, 'info'),
+                    });
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-purple-950 hover:bg-purple-900 border border-purple-800 text-purple-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
-                  <Download className="w-4 h-4" /> Download Studio Master (.MP3)
-                </a>
+                  <Download className="w-4 h-4 text-purple-300" /> Download Studio Master (.WAV / .MP3)
+                </button>
               </div>
             </div>
           </div>

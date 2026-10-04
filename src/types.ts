@@ -1,6 +1,14 @@
 export type ActiveTab =
   | 'welcome_blog'
   | 'role_dashboard'
+  | 'game_studio'
+  | 'time_capsule'
+  | 'digital_twin'
+  | 'neural_cinema'
+  | 'metaverse_world'
+  | 'master_toolkit'
+  | 'collab_timeline'
+  | 'podcast_studio'
   | 'pro_camera'
   | 'projects_hub'
   | '3d_engine'
@@ -10,6 +18,11 @@ export type ActiveTab =
   | 'media_mixer'
   | 'song_studio'
   | 'voice_converter'
+  | 'auto_dubbing'
+  | 'creator_marketplace'
+  | 'social_publisher'
+  | 'manga_storyboard'
+  | 'live_collab'
   | 'office_suite'
   | 'design_studio'
   | 'meme_gif_studio'
@@ -52,6 +65,31 @@ export interface SubProfile {
   createdAt: string;
 }
 
+export interface ConnectedGlobalAccount {
+  id: string;
+  accountType: 'bank_swift' | 'iban_sepa' | 'paypal' | 'wise' | 'crypto' | 'upi' | 'apple_pay';
+  providerName: string;
+  identifier: string;
+  country: string;
+  countryFlag: string;
+  currency: string;
+  status: 'verified' | 'pending' | 'active';
+  isPrimary: boolean;
+  connectedAt: string;
+}
+
+export interface GlobalPaymentProfile {
+  isGlobalReady: boolean;
+  primaryCurrency: 'USD' | 'EUR' | 'GBP' | 'AED' | 'INR' | 'CAD' | 'AUD' | 'SGD';
+  autoPayoutEnabled: boolean;
+  monthlyPayoutThreshold: number;
+  taxResidencyCountry?: string;
+  connectedAccounts: ConnectedGlobalAccount[];
+  kycStatus: 'unverified' | 'in_review' | 'verified_global';
+  totalEarningsWithdrawn: number;
+  availableBalanceUsd: number;
+}
+
 export interface UserProfile {
   id: string;
   username: string;
@@ -74,6 +112,8 @@ export interface UserProfile {
   language?: string;
   isExplicitUnlocked?: boolean;
   explicitAccessMode?: 'free_creator' | 'vip_unlocked' | 'locked';
+  isGlobalReady?: boolean;
+  globalPayment?: GlobalPaymentProfile;
   createdAt: string;
 }
 

@@ -34,6 +34,7 @@ import {
   SlidersHorizontal,
   Compass,
   Camera,
+  Gamepad2,
 } from 'lucide-react';
 import { ActiveTab, PersonaType, UserProfile, ProjectItem } from '../types.ts';
 import { getPersonaConfig, PRIMARY_CATEGORIES } from './PersonaBadge.tsx';
@@ -699,7 +700,19 @@ export const RoleWorkspaceDashboard: React.FC<RoleWorkspaceDashboardProps> = ({
               <Layers className="w-4 h-4 text-cyan-400" />
               <span>Full Studio Ecosystem Navigation</span>
             </h4>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <button
+                type="button"
+                onClick={() => setActiveTab('game_studio')}
+                className="p-3 rounded-2xl bg-indigo-950/40 hover:bg-indigo-900/60 border border-indigo-500/40 hover:border-cyan-400 text-left transition-all group"
+              >
+                <div className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                  <Gamepad2 className="w-3.5 h-3.5 text-amber-400" />
+                  <span>AI Game Maker</span>
+                </div>
+                <div className="text-[10px] text-slate-300 mt-0.5">Playable 2D/3D arcade games</div>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setActiveTab('design_studio')}

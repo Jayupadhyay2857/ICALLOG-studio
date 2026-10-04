@@ -59,8 +59,13 @@ import {
   Activity,
   SlidersHorizontal,
   Clock,
+  Plus,
+  Landmark,
+  DollarSign,
+  Coins,
+  Send,
 } from 'lucide-react';
-import { UserProfile, TransactionRecord, PersonaType } from '../types.ts';
+import { UserProfile, TransactionRecord, PersonaType, ConnectedGlobalAccount, GlobalPaymentProfile } from '../types.ts';
 import { updateUserProfile, fetchUserTransactions, TransactionsSummary } from '../lib/api.ts';
 import { useLanguage } from '../context/LanguageContext.tsx';
 import { SUPPORTED_LANGUAGES, LanguageOption } from '../lib/i18n.ts';
@@ -127,7 +132,21 @@ const COUNTRY_CODES = [
   { code: '+94', country: 'Sri Lanka', flag: '🇱🇰' },
 ];
 
-export type ProfileTab = 'profile' | 'personas' | 'transactions' | 'language' | 'vip' | 'auth' | 'security' | 'theme' | 'privacy' | 'cookies' | 'voice' | 'feedback';
+export type ProfileTab =
+  | 'profile'
+  | 'personas'
+  | 'financial_activity'
+  | 'transactions'
+  | 'global_payments'
+  | 'language'
+  | 'vip'
+  | 'auth'
+  | 'security'
+  | 'theme'
+  | 'privacy'
+  | 'cookies'
+  | 'voice'
+  | 'feedback';
 
 interface ProfileSettingsModalProps {
   user: UserProfile;
@@ -789,7 +808,12 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
     setSelectedPlan(popular);
   }, [selectedPersonaForPlans]);
 
-  const [paymentMethod, setPaymentMethod] = useState<'GPay' | 'PhonePe' | 'Paytm' | 'Net Banking' | 'Cards'>('GPay');
+  const [paymentMethod, setPaymentMethod] = useState<
+    'GPay' | 'PhonePe' | 'Paytm' | 'Net Banking' | 'Cards' | 'PayPal' | 'Apple Pay' | 'Wise Wire' | 'Crypto Web3'
+  >('GPay');
+  const [selectedCurrency, setSelectedCurrency] = useState<'INR' | 'USD' | 'EUR' | 'GBP' | 'AED' | 'CAD' | 'AUD' | 'SGD'>('INR');
+  const [bankSearchQuery, setBankSearchQuery] = useState('');
+  const [selectedBankRegion, setSelectedBankRegion] = useState<'ALL' | 'US_CA' | 'EU_UK' | 'GCC_ME' | 'APAC' | 'IN' | 'LATAM_AFR'>('ALL');
   const [showQr, setShowQr] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -798,8 +822,207 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvv, setCardCvv] = useState('');
   const [cardHolder, setCardHolder] = useState('');
-  const [selectedBank, setSelectedBank] = useState('HDFC Bank');
+  const [selectedBank, setSelectedBank] = useState('HDFC Bank (India)');
   const [upiId, setUpiId] = useState('user@okicici');
+  const [paypalEmail, setPaypalEmail] = useState('');
+  const [cryptoWallet, setCryptoWallet] = useState('');
+
+  // Global Payment Integration Module State
+  const [connectedGlobalAccounts, setConnectedGlobalAccounts] = useState<ConnectedGlobalAccount[]>(() => {
+    if (user.globalPayment?.connectedAccounts && user.globalPayment.connectedAccounts.length > 0) {
+      return user.globalPayment.connectedAccounts;
+    }
+    // Default verified international accounts for global ready profile
+    return [
+      {
+        id: 'ga_chase_01',
+        accountType: 'bank_swift',
+        providerName: 'JPMorgan Chase Bank N.A.',
+        identifier: 'CHASUS33 •••• 6821',
+        country: 'United States',
+        countryFlag: '🇺🇸',
+        currency: 'USD',
+        status: 'verified',
+        isPrimary: true,
+        connectedAt: '2026-09-15',
+      },
+      {
+        id: 'ga_paypal_02',
+        accountType: 'paypal',
+        providerName: 'PayPal Worldwide',
+        identifier: user.email || 'creator@icallog.studio',
+        country: 'Global',
+        countryFlag: '🌐',
+        currency: 'USD',
+        status: 'verified',
+        isPrimary: false,
+        connectedAt: '2026-09-20',
+      },
+    ];
+  });
+
+  const isGlobalReadyEffective = user.isGlobalReady !== false && connectedGlobalAccounts.length > 0;
+
+  const [showAddAccountModal, setShowAddAccountModal] = useState(false);
+  const [newAccType, setNewAccType] = useState<ConnectedGlobalAccount['accountType']>('bank_swift');
+  const [newAccBank, setNewAccBank] = useState('JPMorgan Chase Bank');
+  const [newAccHolder, setNewAccHolder] = useState(user.name || user.username || 'Account Holder');
+  const [newAccNumber, setNewAccNumber] = useState('');
+  const [newAccSwift, setNewAccSwift] = useState('CHASUS33');
+  const [newAccCountry, setNewAccCountry] = useState('United States');
+  const [newAccFlag, setNewAccFlag] = useState('🇺🇸');
+  const [newAccEmail, setNewAccEmail] = useState(user.email || '');
+  const [newAccCryptoAddr, setNewAccCryptoAddr] = useState('');
+  const [newAccCurrency, setNewAccCurrency] = useState('USD');
+  const [isVerifyingAccount, setIsVerifyingAccount] = useState(false);
+  const [isProcessingPayout, setIsProcessingPayout] = useState(false);
+  const [payoutAmount, setPayoutAmount] = useState('250');
+
+  // Handle Add Global Account
+  const handleConnectGlobalAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsVerifyingAccount(true);
+    setTimeout(() => {
+      let providerName = newAccBank;
+      let identifier = newAccNumber ? `•••• ${newAccNumber.slice(-4)}` : 'Verified Gateway';
+      let flag = newAccFlag;
+
+      if (newAccType === 'paypal') {
+        providerName = 'PayPal Global Wallet';
+        identifier = newAccEmail || user.email;
+        flag = '🌐';
+      } else if (newAccType === 'crypto') {
+        providerName = 'Web3 Multi-Chain USDT / Crypto';
+        identifier = newAccCryptoAddr ? `${newAccCryptoAddr.slice(0, 6)}...${newAccCryptoAddr.slice(-4)}` : '0x71C...b89F';
+        flag = '🪙';
+      } else if (newAccType === 'wise') {
+        providerName = 'Wise Multi-Currency Balance';
+        identifier = newAccEmail || user.email;
+        flag = '💱';
+      } else if (newAccType === 'iban_sepa') {
+        providerName = `${newAccBank} (SEPA)`;
+        identifier = newAccNumber || 'GB29 NWBK •••• 9268';
+      } else if (newAccType === 'upi') {
+        providerName = 'NPCI UPI Fast Pay';
+        identifier = newAccEmail || 'user@okaxis';
+        flag = '🇮🇳';
+      } else if (newAccType === 'apple_pay') {
+        providerName = 'Apple Pay Biometric';
+        identifier = 'Linked Apple ID Wallet';
+        flag = '🍎';
+      }
+
+      const newAcc: ConnectedGlobalAccount = {
+        id: `ga_${Date.now()}`,
+        accountType: newAccType,
+        providerName,
+        identifier,
+        country: newAccCountry,
+        countryFlag: flag,
+        currency: newAccCurrency,
+        status: 'verified',
+        isPrimary: connectedGlobalAccounts.length === 0,
+        connectedAt: new Date().toISOString().split('T')[0],
+      };
+
+      const updatedList = [...connectedGlobalAccounts, newAcc];
+      setConnectedGlobalAccounts(updatedList);
+
+      const updatedUser: UserProfile = {
+        ...user,
+        isGlobalReady: true,
+        globalPayment: {
+          isGlobalReady: true,
+          primaryCurrency: (selectedCurrency as any) || 'USD',
+          autoPayoutEnabled: true,
+          monthlyPayoutThreshold: 100,
+          connectedAccounts: updatedList,
+          kycStatus: 'verified_global',
+          totalEarningsWithdrawn: user.globalPayment?.totalEarningsWithdrawn ?? 1420,
+          availableBalanceUsd: user.globalPayment?.availableBalanceUsd ?? 650,
+        },
+      };
+
+      onUpdateUser(updatedUser);
+      setIsVerifyingAccount(false);
+      setShowAddAccountModal(false);
+      setNewAccNumber('');
+      setNewAccCryptoAddr('');
+      onNotify(
+        '🌍 Global Account Connected!',
+        `Successfully linked ${providerName} (${newAccCurrency}). Account status is now "Global-Ready"!`,
+        'success'
+      );
+    }, 1000);
+  };
+
+  const handleSetPrimaryAccount = (id: string) => {
+    const updated = connectedGlobalAccounts.map((a) => ({
+      ...a,
+      isPrimary: a.id === id,
+    }));
+    setConnectedGlobalAccounts(updated);
+    const updatedUser: UserProfile = {
+      ...user,
+      isGlobalReady: true,
+      globalPayment: {
+        ...(user.globalPayment || {
+          isGlobalReady: true,
+          primaryCurrency: 'USD',
+          autoPayoutEnabled: true,
+          monthlyPayoutThreshold: 100,
+          kycStatus: 'verified_global',
+          totalEarningsWithdrawn: 1420,
+          availableBalanceUsd: 650,
+        }),
+        connectedAccounts: updated,
+      },
+    };
+    onUpdateUser(updatedUser);
+    onNotify('Primary Account Set', 'Your primary worldwide payout destination has been updated.', 'info');
+  };
+
+  const handleRemoveAccount = (id: string) => {
+    const updated = connectedGlobalAccounts.filter((a) => a.id !== id);
+    setConnectedGlobalAccounts(updated);
+    const updatedUser: UserProfile = {
+      ...user,
+      isGlobalReady: updated.length > 0,
+      globalPayment: {
+        ...(user.globalPayment || {
+          isGlobalReady: updated.length > 0,
+          primaryCurrency: 'USD',
+          autoPayoutEnabled: true,
+          monthlyPayoutThreshold: 100,
+          kycStatus: updated.length > 0 ? 'verified_global' : 'unverified',
+          totalEarningsWithdrawn: 1420,
+          availableBalanceUsd: 650,
+        }),
+        connectedAccounts: updated,
+        isGlobalReady: updated.length > 0,
+      },
+    };
+    onUpdateUser(updatedUser);
+    onNotify('Account Disconnected', 'Payment gateway removed from your global profile.', 'info');
+  };
+
+  const handleSimulateGlobalPayout = () => {
+    if (connectedGlobalAccounts.length === 0) {
+      onNotify('No Account', 'Please connect a global bank or wallet first.', 'warning');
+      return;
+    }
+    const primary = connectedGlobalAccounts.find((a) => a.isPrimary) || connectedGlobalAccounts[0];
+    setIsProcessingPayout(true);
+    setTimeout(() => {
+      setIsProcessingPayout(false);
+      const amt = parseFloat(payoutAmount) || 250;
+      onNotify(
+        '💸 Worldwide Payout Dispatched!',
+        `Transferred $${amt} USD to ${primary.providerName} (${primary.identifier}) via Global 2FA Clearing!`,
+        'success'
+      );
+    }, 1500);
+  };
 
   const handleSimulatePayment = () => {
     setIsProcessing(true);
@@ -819,8 +1042,6 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
       );
     }, 1200);
   };
-
-  // Feedback state
   const [feedbackCategory, setFeedbackCategory] = useState('feature');
   const [feedbackText, setFeedbackText] = useState('');
 
@@ -1170,19 +1391,51 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
             </button>
 
             <button
-              onClick={() => setActiveTab('transactions')}
+              id="profile-tab-financial-activity-btn"
+              onClick={() => setActiveTab('financial_activity')}
               className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                activeTab === 'transactions'
-                  ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-900/30'
+                activeTab === 'financial_activity' || activeTab === 'transactions'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold shadow-md shadow-emerald-900/30'
                   : 'text-slate-400 hover:text-white hover:bg-slate-900'
               }`}
             >
               <div className="flex items-center gap-2.5">
                 <Receipt className="w-4 h-4 text-emerald-400" />
-                <span>Transactions & Ledger</span>
+                <span>Financial Activity</span>
               </div>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-emerald-300 font-mono">
-                {transactions.length}
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-emerald-300 font-mono font-bold">
+                {transactions.length + 2}
+              </span>
+            </button>
+
+            <button
+              id="profile-tab-global-payments-btn"
+              onClick={() => setActiveTab('global_payments')}
+              className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
+                activeTab === 'global_payments'
+                  ? 'bg-gradient-to-r from-emerald-600 to-cyan-600 text-white font-bold shadow-md shadow-emerald-900/30'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Globe className="w-4 h-4 text-emerald-400" />
+                <span>Global Payments</span>
+              </div>
+              <span
+                className={`text-[9px] px-1.5 py-0.5 rounded font-bold font-mono uppercase tracking-wider flex items-center gap-1 ${
+                  isGlobalReadyEffective
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                    : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                }`}
+              >
+                {isGlobalReadyEffective ? (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Global-Ready
+                  </>
+                ) : (
+                  'Setup'
+                )}
               </span>
             </button>
 
@@ -1413,6 +1666,60 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                       <ArrowRight className="w-3 h-3" />
                     </button>
                   </div>
+                </div>
+
+                {/* Global-Ready Status Hero Banner in Profile Tab */}
+                <div
+                  id="profile-global-ready-banner"
+                  className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg transition-all ${
+                    isGlobalReadyEffective
+                      ? 'bg-gradient-to-r from-emerald-950/70 via-slate-950 to-cyan-950/50 border-emerald-500/50 shadow-emerald-950/30'
+                      : 'bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950/40 border-slate-800 shadow-slate-950/40'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-10 h-10 rounded-2xl flex items-center justify-center text-lg shadow-inner ${
+                        isGlobalReadyEffective
+                          ? 'bg-emerald-500/20 border border-emerald-400/40 text-emerald-400'
+                          : 'bg-slate-800 border border-slate-700 text-slate-400'
+                      }`}
+                    >
+                      🌍
+                    </div>
+                    <div>
+                      <div className="text-xs font-black text-white font-['Syne'] flex items-center gap-2 flex-wrap">
+                        <span>Worldwide Payment Integration</span>
+                        {isGlobalReadyEffective ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 text-[10px] font-mono font-bold shadow-xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            Global-Ready Verified
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 text-[10px] font-mono font-bold">
+                            Pending Account Connection
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] font-mono text-slate-400 mt-0.5">
+                        {isGlobalReadyEffective
+                          ? `${connectedGlobalAccounts.length} Connected Global Account${
+                              connectedGlobalAccounts.length > 1 ? 's' : ''
+                            } • SWIFT Wire, SEPA IBAN & Digital Wallets Active`
+                          : 'Connect your bank account or digital wallet to activate worldwide payouts & global multi-currency transactions.'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('global_payments')}
+                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white text-xs font-bold shadow-md shadow-emerald-950/40 transition-all flex items-center gap-1.5 shrink-0 self-start sm:self-center"
+                  >
+                    <Globe className="w-3.5 h-3.5 text-white" />
+                    <span>Manage Global Accounts</span>
+                    <ArrowRight className="w-3 h-3 text-white" />
+                  </button>
                 </div>
 
                 {/* Live Pro Camera Viewfinder Modal / Section */}
@@ -2054,8 +2361,8 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
               />
             )}
 
-            {/* TRANSACTIONS & PASSBOOK TAB */}
-            {activeTab === 'transactions' && (
+            {/* FINANCIAL ACTIVITY TAB (Past Transactions, Deposit Logs & Subscription Updates) */}
+            {(activeTab === 'financial_activity' || activeTab === 'transactions') && (
               <div className="space-y-4">
                 {/* Header Banner */}
                 <div className="p-5 rounded-3xl bg-slate-950 border border-slate-800 space-y-3 shadow-xl">
@@ -2066,10 +2373,10 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                       </div>
                       <div>
                         <h3 className="text-sm font-black text-white font-['Syne']">
-                          Account Ledger & Passbook (खाता लेन-देन)
+                          Financial Activity & Passbook (वित्तीय गतिविधि एवं पासबुक)
                         </h3>
                         <p className="text-[11px] text-slate-400 font-mono">
-                          Live real-time transaction ledger for token usage, recharges & payments
+                          Live real-time audit ledger for past transactions, successful deposit logs & VIP subscription status
                         </p>
                       </div>
                     </div>
@@ -2078,7 +2385,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                         type="button"
                         onClick={loadTransactions}
                         disabled={isLoadingTx}
-                        className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-[11px] font-semibold flex items-center gap-1.5 border border-slate-700 transition-colors disabled:opacity-50"
+                        className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-[11px] font-semibold flex items-center gap-1.5 border border-slate-700 transition-colors disabled:opacity-50 cursor-pointer"
                       >
                         <RefreshCw className={`w-3.5 h-3.5 ${isLoadingTx ? 'animate-spin text-emerald-400' : ''}`} />
                         <span>Refresh</span>
@@ -2086,7 +2393,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                       <button
                         type="button"
                         onClick={handleExportCsv}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 text-emerald-400 hover:text-emerald-300 text-[11px] font-semibold flex items-center gap-1.5 border border-emerald-800/60 transition-colors"
+                        className="px-3 py-1.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 text-emerald-400 hover:text-emerald-300 text-[11px] font-semibold flex items-center gap-1.5 border border-emerald-800/60 transition-colors cursor-pointer"
                       >
                         <Download className="w-3.5 h-3.5" />
                         <span>CSV Statement</span>
@@ -2094,7 +2401,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                       <button
                         type="button"
                         onClick={handleExportTxt}
-                        className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-400 hover:text-cyan-300 text-[11px] font-semibold flex items-center gap-1.5 border border-slate-700 transition-colors"
+                        className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-400 hover:text-cyan-300 text-[11px] font-semibold flex items-center gap-1.5 border border-slate-700 transition-colors cursor-pointer"
                       >
                         <FileText className="w-3.5 h-3.5" />
                         <span>TXT Passbook</span>
@@ -2121,7 +2428,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                     <div className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800/90">
                       <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
                         <ArrowDownLeft className="w-3 h-3 text-emerald-400" />
-                        <span>TOTAL CREDITED</span>
+                        <span>DEPOSITS & CREDITS</span>
                       </div>
                       <div className="text-lg font-black text-emerald-400 font-mono mt-0.5">
                         +{transactionsSummary?.totalCreditedTokens ?? user.tokenBalance}
@@ -2148,14 +2455,14 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
 
                     <div className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800/90">
                       <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
-                        <CreditCard className="w-3 h-3 text-purple-400" />
-                        <span>INR PAYMENTS</span>
+                        <Crown className="w-3 h-3 text-amber-400" />
+                        <span>VIP SUBSCRIPTION</span>
                       </div>
-                      <div className="text-lg font-black text-purple-300 font-mono mt-0.5">
-                        ₹{transactionsSummary?.totalSpentInr ?? 0}
+                      <div className="text-lg font-black text-amber-300 font-mono mt-0.5 uppercase">
+                        {user.vipTier} Plan
                       </div>
-                      <div className="text-[10px] text-slate-500 font-mono">
-                        Direct UPI & Card billing
+                      <div className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+                        <CheckCircle2 className="w-2.5 h-2.5" /> Active & Verified
                       </div>
                     </div>
                   </div>
@@ -2163,7 +2470,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
 
                 {/* Filter and Search Bar */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-1.5 p-1 bg-slate-950 rounded-xl border border-slate-800 self-start">
+                  <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-950 rounded-xl border border-slate-800 self-start">
                     <button
                       type="button"
                       onClick={() => setTxFilter('all')}
@@ -2173,7 +2480,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                           : 'text-slate-400 hover:text-white'
                       }`}
                     >
-                      All ({transactions.length})
+                      All Activity ({transactions.length})
                     </button>
                     <button
                       type="button"
@@ -2185,7 +2492,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                       }`}
                     >
                       <ArrowDownLeft className="w-3 h-3" />
-                      Credits (+)
+                      Deposit Logs (+)
                     </button>
                     <button
                       type="button"
@@ -2197,7 +2504,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                       }`}
                     >
                       <ArrowUpRight className="w-3 h-3" />
-                      Spent (-)
+                      Usage & Debits (-)
                     </button>
                   </div>
 
@@ -2489,6 +2796,344 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                     >
                       Done
                     </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* GLOBAL PAYMENT INTEGRATION MODULE (Worldwide Banks, Digital Wallets & Global-Ready Status) */}
+            {activeTab === 'global_payments' && (
+              <div className="space-y-5">
+                {/* 1. Global-Ready Status Hero Banner */}
+                <div
+                  id="global-payment-hero-banner"
+                  className={`p-5 rounded-3xl border shadow-xl relative overflow-hidden transition-all ${
+                    isGlobalReadyEffective
+                      ? 'bg-gradient-to-br from-emerald-950/80 via-slate-950 to-cyan-950/60 border-emerald-500/50 shadow-emerald-950/40'
+                      : 'bg-gradient-to-br from-slate-950 via-slate-900 to-amber-950/40 border-slate-800 shadow-slate-950/50'
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+                    <div className="flex items-center gap-3.5">
+                      <div
+                        className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shadow-lg ${
+                          isGlobalReadyEffective
+                            ? 'bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 shadow-emerald-500/20'
+                            : 'bg-slate-800 border border-slate-700 text-slate-400'
+                        }`}
+                      >
+                        🌍
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-base font-black text-white font-['Syne']">
+                            Global Payment Integration
+                          </h3>
+                          {isGlobalReadyEffective ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/60 text-emerald-300 text-xs font-mono font-bold shadow-xs">
+                              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                              Global-Ready Verified
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 text-xs font-mono font-bold">
+                              ⚠️ Setup Required
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-400 font-mono mt-0.5">
+                          Worldwide Bank Wire (SWIFT/IBAN), Digital Wallets, and Multi-Currency Instant Clearing in 190+ Countries.
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowAddAccountModal(true)}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-950/50 flex items-center gap-2 transition-all hover:scale-105 shrink-0"
+                    >
+                      <Plus className="w-4 h-4 text-slate-950 stroke-[3]" />
+                      <span>Connect Bank or Wallet</span>
+                    </button>
+                  </div>
+
+                  {/* Financial Metrics & Worldwide Routing Stats */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4">
+                    <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800">
+                      <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+                        Available Balance
+                      </div>
+                      <div className="text-base font-black text-emerald-400 font-mono mt-0.5">
+                        ${user.globalPayment?.availableBalanceUsd ?? 650}.00 USD
+                      </div>
+                      <div className="text-[9px] text-slate-500 font-mono">
+                        ≈ ₹{((user.globalPayment?.availableBalanceUsd ?? 650) * 87.5).toLocaleString('en-IN')} INR
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800">
+                      <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+                        Total Withdrawn
+                      </div>
+                      <div className="text-base font-black text-cyan-300 font-mono mt-0.5">
+                        ${user.globalPayment?.totalEarningsWithdrawn ?? 1420}.00 USD
+                      </div>
+                      <div className="text-[9px] text-slate-500 font-mono">
+                        100% Cleared via SWIFT
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800">
+                      <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+                        Linked Accounts
+                      </div>
+                      <div className="text-base font-black text-indigo-300 font-mono mt-0.5">
+                        {connectedGlobalAccounts.length} Active
+                      </div>
+                      <div className="text-[9px] text-emerald-400 font-mono flex items-center gap-1">
+                        <CheckCircle2 className="w-2.5 h-2.5" /> 2FA Verified
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800">
+                      <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+                        KYC & Compliance
+                      </div>
+                      <div className="text-base font-black text-amber-300 font-mono mt-0.5 flex items-center gap-1">
+                        <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                        <span>Tier 2 Global</span>
+                      </div>
+                      <div className="text-[9px] text-slate-500 font-mono">
+                        W-8BEN Cleared
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Connected Accounts & Wallets Grid */}
+                <div className="p-5 rounded-3xl bg-slate-950 border border-slate-800 space-y-4 shadow-xl">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Landmark className="w-4 h-4 text-cyan-400" />
+                      <h4 className="text-sm font-black text-white font-['Syne']">
+                        Connected Worldwide Accounts & Wallets
+                      </h4>
+                    </div>
+                    <span className="text-xs text-slate-400 font-mono">
+                      {connectedGlobalAccounts.length} Connected
+                    </span>
+                  </div>
+
+                  {connectedGlobalAccounts.length === 0 ? (
+                    <div className="p-8 rounded-2xl bg-slate-900/50 border border-dashed border-slate-800 text-center space-y-3">
+                      <div className="w-12 h-12 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center mx-auto text-xl">
+                        🏦
+                      </div>
+                      <div>
+                        <h5 className="text-sm font-bold text-white">No Global Accounts Connected</h5>
+                        <p className="text-xs text-slate-400 max-w-md mx-auto mt-1">
+                          Connect your international bank account (via SWIFT/IBAN), PayPal, Wise, Apple Pay, or Web3 wallet to become <strong>Global-Ready</strong> and receive worldwide earnings.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddAccountModal(true)}
+                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md transition-all inline-flex items-center gap-1.5"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Add First Account</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      {connectedGlobalAccounts.map((acc) => (
+                        <div
+                          key={acc.id}
+                          className={`p-4 rounded-2xl border transition-all relative flex flex-col justify-between space-y-3 ${
+                            acc.isPrimary
+                              ? 'bg-gradient-to-br from-slate-900 to-indigo-950/60 border-cyan-500/60 shadow-lg shadow-cyan-950/20'
+                              : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-3">
+                              <span className="text-2xl select-none" title={acc.country}>
+                                {acc.countryFlag || '🌐'}
+                              </span>
+                              <div>
+                                <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                                  <span>{acc.providerName}</span>
+                                  {acc.isPrimary && (
+                                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-mono font-bold border border-cyan-400/40">
+                                      PRIMARY
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] font-mono text-slate-400">
+                                  {acc.identifier}
+                                </div>
+                              </div>
+                            </div>
+
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-mono font-bold flex items-center gap-1 shrink-0">
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>Verified</span>
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 pt-2 border-t border-slate-800/80">
+                            <div>
+                              <span>Currency: </span>
+                              <span className="text-cyan-300 font-bold">{acc.currency}</span>
+                              <span className="text-slate-600"> • </span>
+                              <span>{acc.country}</span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              {!acc.isPrimary && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetPrimaryAccount(acc.id)}
+                                  className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-semibold transition-colors"
+                                  title="Make this account the primary destination for all payouts"
+                                >
+                                  Make Primary
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveAccount(acc.id)}
+                                className="p-1 rounded-lg bg-slate-800 hover:bg-rose-950 hover:text-rose-400 text-slate-400 transition-colors"
+                                title="Disconnect account"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Worldwide Payout & Transfer Simulator */}
+                <div className="p-5 rounded-3xl bg-slate-950 border border-slate-800 space-y-4 shadow-xl">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Send className="w-4 h-4 text-emerald-400" />
+                      <h4 className="text-sm font-black text-white font-['Syne']">
+                        Worldwide Instant Payout Simulator
+                      </h4>
+                    </div>
+                    <span className="text-xs text-emerald-400 font-mono font-bold">
+                      Zero Commission • Real-time Forex
+                    </span>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-300 block mb-1.5">
+                        Select Withdrawal Amount (USD):
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {['50', '100', '250', '500', '1000'].map((amt) => (
+                          <button
+                            key={amt}
+                            type="button"
+                            onClick={() => setPayoutAmount(amt)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all ${
+                              payoutAmount === amt
+                                ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-900/40'
+                                : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-white border border-slate-800'
+                            }`}
+                          >
+                            ${amt} USD
+                          </button>
+                        ))}
+                        <div className="flex items-center bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1">
+                          <span className="text-xs font-mono text-slate-500 mr-1">$</span>
+                          <input
+                            type="number"
+                            value={payoutAmount}
+                            onChange={(e) => setPayoutAmount(e.target.value)}
+                            placeholder="Custom"
+                            className="bg-transparent text-xs font-mono text-white font-bold w-20 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono">
+                      <div>
+                        <div className="text-slate-400">Destination Payout Route:</div>
+                        <div className="text-white font-bold flex items-center gap-1.5 mt-0.5">
+                          {connectedGlobalAccounts.length > 0 ? (
+                            <>
+                              <span>{connectedGlobalAccounts.find((a) => a.isPrimary)?.countryFlag || '🌐'}</span>
+                              <span>
+                                {connectedGlobalAccounts.find((a) => a.isPrimary)?.providerName ||
+                                  connectedGlobalAccounts[0]?.providerName}
+                              </span>
+                              <span className="text-cyan-400">
+                                ({connectedGlobalAccounts.find((a) => a.isPrimary)?.identifier ||
+                                  connectedGlobalAccounts[0]?.identifier})
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-amber-400">No account selected</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleSimulateGlobalPayout}
+                        disabled={isProcessingPayout || connectedGlobalAccounts.length === 0}
+                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-cyan-600 to-indigo-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-bold text-xs shadow-lg shadow-emerald-950/50 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                      >
+                        {isProcessingPayout ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Clearing via SWIFT Network...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-3.5 h-3.5" />
+                            <span>Dispatch ${payoutAmount || '0'} USD Payout</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Global Compliance & Banking Security Standards */}
+                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5">
+                  <div className="text-xs font-bold text-white flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    <span>Global Banking & International Regulatory Compliance</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-[11px] font-mono text-slate-400">
+                    <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80 flex items-start gap-2">
+                      <span className="text-emerald-400 font-bold">✓</span>
+                      <div>
+                        <div className="text-slate-200 font-bold">256-Bit SSL Encryption</div>
+                        <div className="text-[10px] text-slate-500">Bank-grade end-to-end tokenized transfer protocol.</div>
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80 flex items-start gap-2">
+                      <span className="text-emerald-400 font-bold">✓</span>
+                      <div>
+                        <div className="text-slate-200 font-bold">W-8BEN Tax Treaty</div>
+                        <div className="text-[10px] text-slate-500">Cross-border foreign tax certification valid & registered.</div>
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80 flex items-start gap-2">
+                      <span className="text-emerald-400 font-bold">✓</span>
+                      <div>
+                        <div className="text-slate-200 font-bold">OFAC & AML Cleared</div>
+                        <div className="text-[10px] text-slate-500">Compliant with global anti-money laundering frameworks.</div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2886,165 +3531,503 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                   </div>
                 </div>
 
-                {/* Payment Methods */}
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-2">Select Payment Method</label>
-                  <div className="flex flex-wrap gap-2">
-                    {['GPay', 'PhonePe', 'Paytm', 'Net Banking', 'Cards'].map((app) => (
-                      <button
-                        key={app}
-                        type="button"
-                        onClick={() => setPaymentMethod(app as typeof paymentMethod)}
-                        className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                          paymentMethod === app
-                            ? 'bg-emerald-600 text-white border-emerald-400 shadow-md'
-                            : 'bg-slate-800/60 text-slate-400 border-slate-800 hover:text-white'
-                        }`}
-                      >
-                        {app}
-                      </button>
-                    ))}
+                {/* Global Currency & Payment Methods */}
+                <div className="space-y-3">
+                  {/* Currency Switcher for All Over the World */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <Globe className="w-4 h-4 text-cyan-400" />
+                      <span className="text-xs font-bold text-slate-200">Global Currency (अंतर्राष्ट्रीय मुद्रा):</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1">
+                      {[
+                        { code: 'INR', symbol: '₹', label: 'INR (₹)', rate: 1 },
+                        { code: 'USD', symbol: '$', label: 'USD ($)', rate: 0.012 },
+                        { code: 'EUR', symbol: '€', label: 'EUR (€)', rate: 0.011 },
+                        { code: 'GBP', symbol: '£', label: 'GBP (£)', rate: 0.0095 },
+                        { code: 'AED', symbol: 'AED', label: 'AED (د.إ)', rate: 0.044 },
+                        { code: 'CAD', symbol: 'C$', label: 'CAD ($)', rate: 0.016 },
+                        { code: 'AUD', symbol: 'A$', label: 'AUD ($)', rate: 0.018 },
+                        { code: 'SGD', symbol: 'S$', label: 'SGD (S$)', rate: 0.016 },
+                      ].map((curr) => {
+                        const isSel = selectedCurrency === curr.code;
+                        return (
+                          <button
+                            key={curr.code}
+                            type="button"
+                            onClick={() => setSelectedCurrency(curr.code as typeof selectedCurrency)}
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold transition-all ${
+                              isSel
+                                ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                                : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
+                            }`}
+                          >
+                            {curr.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-300 block mb-2">Select Payment Method (ग्लोबल पेमेंट माध्यम)</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { id: 'GPay', label: '⚡ GPay UPI', icon: '📱' },
+                        { id: 'PhonePe', label: '🟣 PhonePe', icon: '📲' },
+                        { id: 'Paytm', label: '🔵 Paytm UPI', icon: '💳' },
+                        { id: 'Net Banking', label: '🏦 Global Net Banking (100+ Banks)', icon: '🏛️' },
+                        { id: 'Cards', label: '💳 Visa / Master / Amex', icon: '💳' },
+                        { id: 'PayPal', label: '🅿️ PayPal Global', icon: '🌎' },
+                        { id: 'Apple Pay', label: '🍎 Apple / Google Pay', icon: '⚡' },
+                        { id: 'Wise Wire', label: '🌐 Wise International Wire', icon: '💱' },
+                        { id: 'Crypto Web3', label: '🪙 Crypto (USDT/BTC/ETH)', icon: '⛓️' },
+                      ].map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => setPaymentMethod(m.id as typeof paymentMethod)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 ${
+                            paymentMethod === m.id
+                              ? 'bg-gradient-to-r from-cyan-600 to-indigo-600 text-white border-cyan-400 shadow-md shadow-cyan-950/40'
+                              : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-white hover:bg-slate-800/80'
+                          }`}
+                        >
+                          <span>{m.label}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
-                {/* Action Button */}
+                {/* Action & Checkout View */}
                 <div className="pt-2">
-                  {!showQr ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowQr(true)}
-                      className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-black shadow-lg shadow-amber-900/30 flex items-center justify-center gap-2 uppercase tracking-wide"
-                    >
-                      <CreditCard className="w-4 h-4" /> Proceed to Pay ₹{selectedPlan.price} via {paymentMethod}
-                    </button>
-                  ) : (
-                    <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-left space-y-3">
-                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                        <div className="text-xs font-bold text-white uppercase tracking-wider font-['Syne']">
-                          {paymentMethod === 'Cards' && 'Credit / Debit Card Secure Checkout'}
-                          {paymentMethod === 'Net Banking' && 'Select Bank for Net Banking'}
-                          {['GPay', 'PhonePe', 'Paytm'].includes(paymentMethod) && `${paymentMethod} UPI Checkout`}
-                        </div>
-                        <span className="text-xs font-mono font-bold text-cyan-400">₹{selectedPlan.price}</span>
-                      </div>
+                  {(() => {
+                    const getFormattedPrice = (inrPrice: number) => {
+                      switch (selectedCurrency) {
+                        case 'USD': return `$${(inrPrice * 0.012).toFixed(2)}`;
+                        case 'EUR': return `€${(inrPrice * 0.011).toFixed(2)}`;
+                        case 'GBP': return `£${(inrPrice * 0.0095).toFixed(2)}`;
+                        case 'AED': return `AED ${(inrPrice * 0.044).toFixed(1)}`;
+                        case 'CAD': return `C$${(inrPrice * 0.016).toFixed(2)}`;
+                        case 'AUD': return `A$${(inrPrice * 0.018).toFixed(2)}`;
+                        case 'SGD': return `S$${(inrPrice * 0.016).toFixed(2)}`;
+                        default: return `₹${inrPrice}`;
+                      }
+                    };
 
-                      {paymentMethod === 'Cards' && (
-                        <div className="space-y-3 pt-1">
+                    const displayPrice = getFormattedPrice(selectedPlan.price);
+
+                    const ALL_GLOBAL_BANKS: {
+                      id: string;
+                      name: string;
+                      country: string;
+                      flag: string;
+                      region: 'US_CA' | 'EU_UK' | 'GCC_ME' | 'APAC' | 'IN' | 'LATAM_AFR';
+                      swift: string;
+                      popular?: boolean;
+                    }[] = [
+                      // North America (US & Canada)
+                      { id: 'chase', name: 'JPMorgan Chase Bank', country: 'United States', flag: '🇺🇸', region: 'US_CA', swift: 'CHASUS33', popular: true },
+                      { id: 'bofa', name: 'Bank of America', country: 'United States', flag: '🇺🇸', region: 'US_CA', swift: 'BOFAUS3N', popular: true },
+                      { id: 'wellsfargo', name: 'Wells Fargo', country: 'United States', flag: '🇺🇸', region: 'US_CA', swift: 'WFBIUS6S', popular: true },
+                      { id: 'citibank', name: 'Citibank N.A.', country: 'United States', flag: '🇺🇸', region: 'US_CA', swift: 'CITIUS33', popular: true },
+                      { id: 'goldman', name: 'Goldman Sachs', country: 'United States', flag: '🇺🇸', region: 'US_CA', swift: 'GSCOUS33' },
+                      { id: 'morganstanley', name: 'Morgan Stanley', country: 'United States', flag: '🇺🇸', region: 'US_CA', swift: 'MSTLUS33' },
+                      { id: 'capitalone', name: 'Capital One', country: 'United States', flag: '🇺🇸', region: 'US_CA', swift: 'NFBKUS33' },
+                      { id: 'usbank', name: 'U.S. Bank', country: 'United States', flag: '🇺🇸', region: 'US_CA', swift: 'USBKUS44' },
+                      { id: 'pnc', name: 'PNC Bank', country: 'United States', flag: '🇺🇸', region: 'US_CA', swift: 'PNCCUS33' },
+                      { id: 'rbc', name: 'Royal Bank of Canada (RBC)', country: 'Canada', flag: '🇨🇦', region: 'US_CA', swift: 'ROYCCAT2', popular: true },
+                      { id: 'td', name: 'TD Bank (Toronto-Dominion)', country: 'Canada', flag: '🇨🇦', region: 'US_CA', swift: 'TDOMCATT', popular: true },
+                      { id: 'scotia', name: 'Scotiabank', country: 'Canada', flag: '🇨🇦', region: 'US_CA', swift: 'NOSCCATT' },
+                      { id: 'bmo', name: 'Bank of Montreal (BMO)', country: 'Canada', flag: '🇨🇦', region: 'US_CA', swift: 'BOFMCAM2' },
+                      { id: 'cibc', name: 'CIBC Canadian Imperial', country: 'Canada', flag: '🇨🇦', region: 'US_CA', swift: 'CIBCATTT' },
+
+                      // Europe & United Kingdom
+                      { id: 'hsbc', name: 'HSBC Bank UK / Global', country: 'United Kingdom', flag: '🇬🇧', region: 'EU_UK', swift: 'HBUKGB41', popular: true },
+                      { id: 'barclays', name: 'Barclays Bank', country: 'United Kingdom', flag: '🇬🇧', region: 'EU_UK', swift: 'BARCGB22', popular: true },
+                      { id: 'lloyds', name: 'Lloyds Banking Group', country: 'United Kingdom', flag: '🇬🇧', region: 'EU_UK', swift: 'LOYDGB2L', popular: true },
+                      { id: 'natwest', name: 'NatWest / RBS Group', country: 'United Kingdom', flag: '🇬🇧', region: 'EU_UK', swift: 'NWBKGB2L' },
+                      { id: 'stdchartered', name: 'Standard Chartered', country: 'United Kingdom', flag: '🇬🇧', region: 'EU_UK', swift: 'SCBLGB2L' },
+                      { id: 'bnpparibas', name: 'BNP Paribas', country: 'France', flag: '🇫🇷', region: 'EU_UK', swift: 'BNPAFRPA', popular: true },
+                      { id: 'creditagricole', name: 'Crédit Agricole', country: 'France', flag: '🇫🇷', region: 'EU_UK', swift: 'AGRIFRPP' },
+                      { id: 'socgen', name: 'Société Générale', country: 'France', flag: '🇫🇷', region: 'EU_UK', swift: 'SOGEFRPA' },
+                      { id: 'deutsche', name: 'Deutsche Bank', country: 'Germany', flag: '🇩🇪', region: 'EU_UK', swift: 'DEUTDEDD', popular: true },
+                      { id: 'commerz', name: 'Commerzbank', country: 'Germany', flag: '🇩🇪', region: 'EU_UK', swift: 'COBADEDD' },
+                      { id: 'santander', name: 'Banco Santander', country: 'Spain', flag: '🇪🇸', region: 'EU_UK', swift: 'BSCHESMM', popular: true },
+                      { id: 'bbva', name: 'BBVA', country: 'Spain', flag: '🇪🇸', region: 'EU_UK', swift: 'BBVAESMM' },
+                      { id: 'ubs', name: 'UBS Switzerland', country: 'Switzerland', flag: '🇨🇭', region: 'EU_UK', swift: 'UBSWCHZH', popular: true },
+                      { id: 'creditsuisse', name: 'Credit Suisse', country: 'Switzerland', flag: '🇨🇭', region: 'EU_UK', swift: 'CRESCHZZ' },
+                      { id: 'ing', name: 'ING Group', country: 'Netherlands', flag: '🇳🇱', region: 'EU_UK', swift: 'INGBNL2A', popular: true },
+                      { id: 'intesasanpaolo', name: 'Intesa Sanpaolo', country: 'Italy', flag: '🇮🇹', region: 'EU_UK', swift: 'BCITITMM' },
+                      { id: 'unicredit', name: 'UniCredit', country: 'Italy', flag: '🇮🇹', region: 'EU_UK', swift: 'UNCRITM1' },
+                      { id: 'nordea', name: 'Nordea Bank', country: 'Sweden / Nordics', flag: '🇸🇪', region: 'EU_UK', swift: 'NDEASESS' },
+
+                      // Middle East & GCC
+                      { id: 'enbd', name: 'Emirates NBD', country: 'United Arab Emirates', flag: '🇦🇪', region: 'GCC_ME', swift: 'EBILAEAD', popular: true },
+                      { id: 'fab', name: 'First Abu Dhabi Bank (FAB)', country: 'United Arab Emirates', flag: '🇦🇪', region: 'GCC_ME', swift: 'NBADAEAD', popular: true },
+                      { id: 'adcb', name: 'Abu Dhabi Commercial Bank (ADCB)', country: 'United Arab Emirates', flag: '🇦🇪', region: 'GCC_ME', swift: 'ADCBAEAA' },
+                      { id: 'dib', name: 'Dubai Islamic Bank (DIB)', country: 'United Arab Emirates', flag: '🇦🇪', region: 'GCC_ME', swift: 'DUBIAEAA' },
+                      { id: 'mashreq', name: 'Mashreq Bank', country: 'United Arab Emirates', flag: '🇦🇪', region: 'GCC_ME', swift: 'MSHQAEAD' },
+                      { id: 'snb', name: 'Saudi National Bank (SNB)', country: 'Saudi Arabia', flag: '🇸🇦', region: 'GCC_ME', swift: 'NCBKSARI', popular: true },
+                      { id: 'alrajhi', name: 'Al Rajhi Bank', country: 'Saudi Arabia', flag: '🇸🇦', region: 'GCC_ME', swift: 'RJHIASRI', popular: true },
+                      { id: 'riyad', name: 'Riyad Bank', country: 'Saudi Arabia', flag: '🇸🇦', region: 'GCC_ME', swift: 'RIBLSARI' },
+                      { id: 'qnb', name: 'Qatar National Bank (QNB)', country: 'Qatar', flag: '🇶🇦', region: 'GCC_ME', swift: 'QNBAQAQA', popular: true },
+                      { id: 'nbk', name: 'National Bank of Kuwait (NBK)', country: 'Kuwait', flag: '🇰🇼', region: 'GCC_ME', swift: 'NBOKKWKW' },
+                      { id: 'bankmuscat', name: 'Bank Muscat', country: 'Oman', flag: '🇴🇲', region: 'GCC_ME', swift: 'BMUSOMRR' },
+
+                      // Asia-Pacific & Australia
+                      { id: 'dbs', name: 'DBS Bank Singapore', country: 'Singapore', flag: '🇸🇬', region: 'APAC', swift: 'DBSSSGSG', popular: true },
+                      { id: 'ocbc', name: 'OCBC Bank', country: 'Singapore', flag: '🇸🇬', region: 'APAC', swift: 'OCBCSGSG', popular: true },
+                      { id: 'uob', name: 'United Overseas Bank (UOB)', country: 'Singapore', flag: '🇸🇬', region: 'APAC', swift: 'UOVBSGSG' },
+                      { id: 'cba', name: 'Commonwealth Bank of Australia', country: 'Australia', flag: '🇦🇺', region: 'APAC', swift: 'CTBAAU2S', popular: true },
+                      { id: 'anz', name: 'ANZ Bank', country: 'Australia', flag: '🇦🇺', region: 'APAC', swift: 'ANZBAU3M', popular: true },
+                      { id: 'westpac', name: 'Westpac Banking Corp', country: 'Australia', flag: '🇦🇺', region: 'APAC', swift: 'WPACAU2S' },
+                      { id: 'nab', name: 'National Australia Bank (NAB)', country: 'Australia', flag: '🇦🇺', region: 'APAC', swift: 'NATAAU3303M' },
+                      { id: 'mufg', name: 'MUFG Bank (Mitsubishi UFJ)', country: 'Japan', flag: '🇯🇵', region: 'APAC', swift: 'BOTKJPJT', popular: true },
+                      { id: 'smbc', name: 'Sumitomo Mitsui Banking (SMBC)', country: 'Japan', flag: '🇯🇵', region: 'APAC', swift: 'SMBCJPJT' },
+                      { id: 'mizuho', name: 'Mizuho Bank', country: 'Japan', flag: '🇯🇵', region: 'APAC', swift: 'MHCBJPJT' },
+                      { id: 'boc', name: 'Bank of China', country: 'China', flag: '🇨🇳', region: 'APAC', swift: 'BKCHCNBJ', popular: true },
+                      { id: 'icbc', name: 'ICBC (Industrial & Commercial Bank)', country: 'China', flag: '🇨🇳', region: 'APAC', swift: 'ICBKCNBJ', popular: true },
+                      { id: 'ccb', name: 'China Construction Bank', country: 'China', flag: '🇨🇳', region: 'APAC', swift: 'PCBCCNBJ' },
+                      { id: 'maybank', name: 'Maybank', country: 'Malaysia', flag: '🇲🇾', region: 'APAC', swift: 'MBBEMYKL' },
+                      { id: 'cimb', name: 'CIMB Bank', country: 'Malaysia', flag: '🇲🇾', region: 'APAC', swift: 'CIBBMYKL' },
+                      { id: 'bangkokbank', name: 'Bangkok Bank', country: 'Thailand', flag: '🇹🇭', region: 'APAC', swift: 'BKKBTHTH' },
+                      { id: 'bca', name: 'Bank Central Asia (BCA)', country: 'Indonesia', flag: '🇮🇩', region: 'APAC', swift: 'CENAIDJA' },
+                      { id: 'shinhan', name: 'Shinhan Bank', country: 'South Korea', flag: '🇰🇷', region: 'APAC', swift: 'SHBKEXKR' },
+
+                      // India & South Asia
+                      { id: 'sbi', name: 'State Bank of India (SBI)', country: 'India', flag: '🇮🇳', region: 'IN', swift: 'SBININBB', popular: true },
+                      { id: 'hdfc', name: 'HDFC Bank', country: 'India', flag: '🇮🇳', region: 'IN', swift: 'HDFCINBB', popular: true },
+                      { id: 'icici', name: 'ICICI Bank', country: 'India', flag: '🇮🇳', region: 'IN', swift: 'ICICINBB', popular: true },
+                      { id: 'axis', name: 'Axis Bank', country: 'India', flag: '🇮🇳', region: 'IN', swift: 'UTIBINBB', popular: true },
+                      { id: 'kotak', name: 'Kotak Mahindra Bank', country: 'India', flag: '🇮🇳', region: 'IN', swift: 'KKBKINBB', popular: true },
+                      { id: 'pnb', name: 'Punjab National Bank (PNB)', country: 'India', flag: '🇮🇳', region: 'IN', swift: 'PUNBINBB', popular: true },
+                      { id: 'bob', name: 'Bank of Baroda', country: 'India', flag: '🇮🇳', region: 'IN', swift: 'BARBINBB' },
+                      { id: 'canara', name: 'Canara Bank', country: 'India', flag: '🇮🇳', region: 'IN', swift: 'CNRBINBB' },
+                      { id: 'indusind', name: 'IndusInd Bank', country: 'India', flag: '🇮🇳', region: 'IN', swift: 'INDBINBB' },
+                      { id: 'unionbank', name: 'Union Bank of India', country: 'India', flag: '🇮🇳', region: 'IN', swift: 'UBININBB' },
+                      { id: 'yesbank', name: 'YES Bank', country: 'India', flag: '🇮🇳', region: 'IN', swift: 'YESBINBB' },
+                      { id: 'idfc', name: 'IDFC FIRST Bank', country: 'India', flag: '🇮🇳', region: 'IN', swift: 'IDFBINBB' },
+
+                      // Latin America & Africa
+                      { id: 'itau', name: 'Itaú Unibanco', country: 'Brazil', flag: '🇧🇷', region: 'LATAM_AFR', swift: 'ITAUUS33', popular: true },
+                      { id: 'bb', name: 'Banco do Brasil', country: 'Brazil', flag: '🇧🇷', region: 'LATAM_AFR', swift: 'BRASBRRJ' },
+                      { id: 'nubank', name: 'Nubank', country: 'Brazil', flag: '🇧🇷', region: 'LATAM_AFR', swift: 'NUBNBRSP', popular: true },
+                      { id: 'banorte', name: 'Banorte', country: 'Mexico', flag: '🇲🇽', region: 'LATAM_AFR', swift: 'BANMMXMM' },
+                      { id: 'standardbank', name: 'Standard Bank', country: 'South Africa', flag: '🇿🇦', region: 'LATAM_AFR', swift: 'SBZAZAJJ', popular: true },
+                      { id: 'absa', name: 'Absa Group', country: 'South Africa', flag: '🇿🇦', region: 'LATAM_AFR', swift: 'ABSAZAJJ' },
+                      { id: 'accessbank', name: 'Access Bank', country: 'Nigeria', flag: '🇳🇬', region: 'LATAM_AFR', swift: 'ACCEngla' },
+                      { id: 'zenith', name: 'Zenith Bank', country: 'Nigeria', flag: '🇳🇬', region: 'LATAM_AFR', swift: 'ZENIngla' },
+                      { id: 'equity', name: 'Equity Bank', country: 'Kenya', flag: '🇰🇪', region: 'LATAM_AFR', swift: 'EQBLKENA' },
+                      { id: 'nbe', name: 'National Bank of Egypt', country: 'Egypt', flag: '🇪🇬', region: 'LATAM_AFR', swift: 'NBEGEGCX' },
+                    ];
+
+                    const filteredBanks = ALL_GLOBAL_BANKS.filter((b) => {
+                      const matchesRegion = selectedBankRegion === 'ALL' || b.region === selectedBankRegion;
+                      const q = bankSearchQuery.toLowerCase().trim();
+                      const matchesSearch =
+                        !q ||
+                        b.name.toLowerCase().includes(q) ||
+                        b.country.toLowerCase().includes(q) ||
+                        b.swift.toLowerCase().includes(q);
+                      return matchesRegion && matchesSearch;
+                    });
+
+                    if (!showQr) {
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setShowQr(true)}
+                          className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-black shadow-lg shadow-amber-900/30 flex items-center justify-center gap-2 uppercase tracking-wide"
+                        >
+                          <CreditCard className="w-4 h-4" /> Proceed to Pay {displayPrice} via {paymentMethod}
+                        </button>
+                      );
+                    }
+
+                    return (
+                      <div className="p-4 sm:p-5 rounded-2xl bg-slate-950 border border-slate-800 text-left space-y-4 animate-in fade-in">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                           <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">Cardholder Name</label>
-                            <input
-                              type="text"
-                              value={cardHolder}
-                              onChange={(e) => setCardHolder(e.target.value)}
-                              placeholder="Name on Card"
-                              className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white focus:border-cyan-500 focus:outline-none"
-                            />
+                            <div className="text-xs font-bold text-white uppercase tracking-wider font-['Syne']">
+                              {paymentMethod === 'Net Banking' && '🏛️ Global Net Banking Gateway (100+ World Banks)'}
+                              {paymentMethod === 'Cards' && '💳 Credit / Debit Card Secure Checkout'}
+                              {['GPay', 'PhonePe', 'Paytm'].includes(paymentMethod) && `📱 ${paymentMethod} UPI Fast Pay`}
+                              {paymentMethod === 'PayPal' && '🅿️ PayPal Worldwide Gateway'}
+                              {paymentMethod === 'Apple Pay' && '🍎 Apple / Google Pay Instant Checkout'}
+                              {paymentMethod === 'Wise Wire' && '🌐 Wise International Wire Transfer'}
+                              {paymentMethod === 'Crypto Web3' && '🪙 Web3 Crypto Instant Deposit (USDT/BTC)'}
+                            </div>
+                            <p className="text-[10px] text-slate-400">
+                              Encrypted 256-bit SSL • Multi-Currency Gateway Active
+                            </p>
                           </div>
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">Card Number</label>
-                            <input
-                              type="text"
-                              value={cardNumber}
-                              onChange={(e) => setCardNumber(e.target.value)}
-                              placeholder="4532 •••• •••• 7890"
-                              maxLength={19}
-                              className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white font-mono focus:border-cyan-500 focus:outline-none"
-                            />
+                          <div className="text-right">
+                            <span className="text-sm font-mono font-black text-cyan-400">{displayPrice}</span>
+                            <div className="text-[9px] font-mono text-slate-500">Plan: {selectedPlan.name}</div>
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">Expiry (MM/YY)</label>
+                        </div>
+
+                        {/* 1. Global Net Banking Interface */}
+                        {paymentMethod === 'Net Banking' && (
+                          <div className="space-y-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <label className="text-[11px] font-bold text-cyan-300 font-mono flex items-center gap-1.5">
+                                <span>Choose from 80+ Major World Banks & Institutions:</span>
+                              </label>
+                              <span className="text-[10px] font-mono text-slate-400">
+                                Showing {filteredBanks.length} of {ALL_GLOBAL_BANKS.length} Banks
+                              </span>
+                            </div>
+
+                            {/* Search Filter Bar */}
+                            <div className="relative">
+                              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
                               <input
                                 type="text"
-                                value={cardExpiry}
-                                onChange={(e) => setCardExpiry(e.target.value)}
-                                placeholder="12/28"
-                                maxLength={5}
-                                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white font-mono focus:border-cyan-500 focus:outline-none"
+                                value={bankSearchQuery}
+                                onChange={(e) => setBankSearchQuery(e.target.value)}
+                                placeholder="Search bank by name, country (e.g. Chase, HSBC, DBS, Barclays, SBI, Emirates NBD, TD)..."
+                                className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none font-mono"
+                              />
+                            </div>
+
+                            {/* Region Filter Tabs */}
+                            <div className="flex flex-wrap gap-1">
+                              {[
+                                { id: 'ALL', label: '🌍 All Global' },
+                                { id: 'US_CA', label: '🇺🇸 North America' },
+                                { id: 'EU_UK', label: '🇪🇺 Europe & UK' },
+                                { id: 'GCC_ME', label: '🇦🇪 Middle East' },
+                                { id: 'APAC', label: '🌏 Asia-Pacific' },
+                                { id: 'IN', label: '🇮🇳 India' },
+                                { id: 'LATAM_AFR', label: '🌎 LatAm & Africa' },
+                              ].map((rg) => (
+                                <button
+                                  key={rg.id}
+                                  type="button"
+                                  onClick={() => setSelectedBankRegion(rg.id as typeof selectedBankRegion)}
+                                  className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
+                                    selectedBankRegion === rg.id
+                                      ? 'bg-cyan-600 text-white shadow-sm'
+                                      : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
+                                  }`}
+                                >
+                                  {rg.label}
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Bank List Grid */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-56 overflow-y-auto p-1 bg-slate-950/80 rounded-xl border border-slate-900">
+                              {filteredBanks.map((b) => {
+                                const isSelected = selectedBank === `${b.name} (${b.country})`;
+                                return (
+                                  <button
+                                    key={b.id}
+                                    type="button"
+                                    onClick={() => setSelectedBank(`${b.name} (${b.country})`)}
+                                    className={`p-2 rounded-xl text-left border transition-all flex items-center gap-2 ${
+                                      isSelected
+                                        ? 'bg-gradient-to-r from-cyan-950 to-indigo-950 border-cyan-400 text-white shadow-md'
+                                        : 'bg-slate-900/90 border-slate-800/80 text-slate-300 hover:border-slate-700 hover:text-white'
+                                    }`}
+                                  >
+                                    <span className="text-base">{b.flag}</span>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="text-xs font-bold truncate leading-tight">{b.name}</div>
+                                      <div className="text-[9px] font-mono text-slate-400 flex items-center justify-between">
+                                        <span>{b.country}</span>
+                                        <span className="text-cyan-400">{b.swift}</span>
+                                      </div>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            <div className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center justify-between text-[11px] font-mono text-slate-300">
+                              <span>Selected: <strong className="text-emerald-400">{selectedBank}</strong></span>
+                              <span className="text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">
+                                🔐 Direct 2FA Gateway
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 2. Global Credit / Debit Card Checkout */}
+                        {paymentMethod === 'Cards' && (
+                          <div className="space-y-3 pt-1">
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">Cardholder Name</label>
+                              <input
+                                type="text"
+                                value={cardHolder}
+                                onChange={(e) => setCardHolder(e.target.value)}
+                                placeholder="Full Name on Card"
+                                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white focus:border-cyan-500 focus:outline-none"
                               />
                             </div>
                             <div>
-                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">CVV / PIN</label>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">Card Number (Visa, Mastercard, Amex, RuPay)</label>
                               <input
-                                type="password"
-                                value={cardCvv}
-                                onChange={(e) => setCardCvv(e.target.value)}
-                                placeholder="•••"
-                                maxLength={4}
+                                type="text"
+                                value={cardNumber}
+                                onChange={(e) => setCardNumber(e.target.value)}
+                                placeholder="4532 •••• •••• 7890"
+                                maxLength={19}
                                 className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white font-mono focus:border-cyan-500 focus:outline-none"
                               />
                             </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {paymentMethod === 'Net Banking' && (
-                        <div className="space-y-3 pt-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">Choose Popular Bank</label>
-                          <div className="grid grid-cols-2 gap-2">
-                            {['HDFC Bank', 'ICICI Bank', 'State Bank of India', 'Axis Bank', 'Kotak Mahindra', 'Punjab National Bank'].map((bank) => (
-                              <button
-                                key={bank}
-                                type="button"
-                                onClick={() => setSelectedBank(bank)}
-                                className={`p-2.5 rounded-xl text-xs font-semibold border text-left transition-all ${
-                                  selectedBank === bank
-                                    ? 'bg-indigo-600 text-white border-indigo-400'
-                                    : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-slate-700'
-                                }`}
-                              >
-                                {bank}
-                              </button>
-                            ))}
-                          </div>
-                          <div className="text-[11px] font-mono text-emerald-400 pt-1">
-                            Selected: {selectedBank} (Secure 2FA Gateway)
-                          </div>
-                        </div>
-                      )}
-
-                      {['GPay', 'PhonePe', 'Paytm'].includes(paymentMethod) && (
-                        <div className="text-center space-y-3 py-1">
-                          <div className="w-32 h-32 mx-auto bg-white p-2 rounded-xl flex items-center justify-center">
-                            <div className="w-full h-full bg-slate-900 flex items-center justify-center text-cyan-400 text-xs font-mono font-bold p-2 text-center">
-                              [UPI QR] {paymentMethod.toLowerCase()}@icici ₹{selectedPlan.price}
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">Expiry (MM/YY)</label>
+                                <input
+                                  type="text"
+                                  value={cardExpiry}
+                                  onChange={(e) => setCardExpiry(e.target.value)}
+                                  placeholder="12/28"
+                                  maxLength={5}
+                                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white font-mono focus:border-cyan-500 focus:outline-none"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">CVV / CVC (3 or 4 digits)</label>
+                                <input
+                                  type="password"
+                                  value={cardCvv}
+                                  onChange={(e) => setCardCvv(e.target.value)}
+                                  placeholder="•••"
+                                  maxLength={4}
+                                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white font-mono focus:border-cyan-500 focus:outline-none"
+                                />
+                              </div>
                             </div>
                           </div>
-                          <div>
-                            <input
-                              type="text"
-                              value={upiId}
-                              onChange={(e) => setUpiId(e.target.value)}
-                              placeholder="user@oksbi"
-                              className="w-full max-w-xs mx-auto px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white font-mono text-center focus:border-cyan-500 focus:outline-none block"
-                            />
+                        )}
+
+                        {/* 3. PayPal Global Checkout */}
+                        {paymentMethod === 'PayPal' && (
+                          <div className="space-y-3 pt-1 text-center">
+                            <div className="p-4 rounded-xl bg-blue-950/40 border border-blue-800/60 space-y-2">
+                              <span className="text-2xl">🅿️</span>
+                              <div className="text-xs font-bold text-blue-200">PayPal Worldwide Instant Checkout</div>
+                              <p className="text-[11px] text-slate-400">
+                                Pay securely using your PayPal balance, linked international bank accounts, or debit cards worldwide.
+                              </p>
+                              <input
+                                type="email"
+                                value={paypalEmail}
+                                onChange={(e) => setPaypalEmail(e.target.value)}
+                                placeholder="your-paypal-email@domain.com"
+                                className="w-full max-w-sm mx-auto px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white text-center font-mono focus:border-blue-500 focus:outline-none block"
+                              />
+                            </div>
                           </div>
+                        )}
+
+                        {/* 4. Apple Pay / Google Pay Global */}
+                        {paymentMethod === 'Apple Pay' && (
+                          <div className="space-y-3 pt-1 text-center">
+                            <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                              <span className="text-2xl">🍎⚡</span>
+                              <div className="text-xs font-bold text-white">Apple Pay & Google Pay One-Touch</div>
+                              <p className="text-[11px] text-slate-400">
+                                Pay instantly using Touch ID, Face ID, or your biometric wallet on iPhone, iPad, Mac, and Android devices.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 5. Wise International Wire */}
+                        {paymentMethod === 'Wise Wire' && (
+                          <div className="space-y-3 pt-1">
+                            <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-800/60 space-y-2 text-xs">
+                              <div className="font-bold text-emerald-300 flex items-center gap-1.5">
+                                <span>🌐 Wise International SWIFT / IBAN Details:</span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 text-[11px] font-mono text-slate-300">
+                                <div>Beneficiary: <strong className="text-white">iCALLOG Creative Studio Inc.</strong></div>
+                                <div>Currency: <strong className="text-emerald-400">{selectedCurrency}</strong></div>
+                                <div>SWIFT / BIC: <strong className="text-cyan-400">WISEUS33XXX</strong></div>
+                                <div>Account Ref: <strong className="text-white">ACC-ICL-98402</strong></div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 6. Crypto Web3 Checkout */}
+                        {paymentMethod === 'Crypto Web3' && (
+                          <div className="space-y-3 pt-1 text-center">
+                            <div className="p-3.5 rounded-xl bg-purple-950/40 border border-purple-800/60 space-y-2">
+                              <span className="text-2xl">🪙</span>
+                              <div className="text-xs font-bold text-purple-200">Web3 Multi-Chain Crypto Deposit (USDT / BTC / ETH / SOL)</div>
+                              <p className="text-[11px] text-slate-400">
+                                Send USDT (TRC-20 / ERC-20 / Solana) or BTC for instant automated confirmation.
+                              </p>
+                              <div className="p-2 rounded bg-slate-900 font-mono text-[10px] text-cyan-300 select-all break-all border border-slate-800">
+                                0x71C...b89F (USDT ERC20) • TQ3x...7kL9 (USDT TRC20)
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 7. UPI Checkout (India) */}
+                        {['GPay', 'PhonePe', 'Paytm'].includes(paymentMethod) && (
+                          <div className="text-center space-y-3 py-1">
+                            <div className="w-32 h-32 mx-auto bg-white p-2 rounded-xl flex items-center justify-center shadow-lg">
+                              <div className="w-full h-full bg-slate-900 flex items-center justify-center text-cyan-400 text-xs font-mono font-bold p-2 text-center">
+                                [UPI QR] {paymentMethod.toLowerCase()}@icici {displayPrice}
+                              </div>
+                            </div>
+                            <div>
+                              <input
+                                type="text"
+                                value={upiId}
+                                onChange={(e) => setUpiId(e.target.value)}
+                                placeholder="yourname@okhdfcbank"
+                                className="w-full max-w-xs mx-auto px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white font-mono text-center focus:border-cyan-500 focus:outline-none block"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="text-[10px] text-slate-400 font-mono text-center flex items-center justify-center gap-2">
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Global Reference: TXN-GLB-{Math.random().toString(36).substring(2, 10).toUpperCase()}</span>
                         </div>
-                      )}
 
-                      <div className="text-[11px] text-slate-400 font-mono text-center">
-                        Secure Reference ID: TXN-{Math.random().toString(36).substring(2, 10).toUpperCase()}
+                        <div className="flex gap-2 justify-center pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowQr(false)}
+                            className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold hover:bg-slate-700 transition-colors"
+                          >
+                            Back
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSimulatePayment}
+                            disabled={isProcessing}
+                            className="px-6 py-2 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-lg shadow-emerald-950/50 flex items-center gap-2 transition-all disabled:opacity-50"
+                          >
+                            {isProcessing ? (
+                              <>
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                <span>Verifying Global 2FA...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Pay {displayPrice} & Activate VIP Worldwide</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </div>
-
-                      <div className="flex gap-2 justify-center pt-2">
-                        <button
-                          type="button"
-                          onClick={() => setShowQr(false)}
-                          className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold hover:bg-slate-700"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleSimulatePayment}
-                          disabled={isProcessing}
-                          className="px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-lg flex items-center gap-2"
-                        >
-                          {isProcessing ? 'Verifying 2FA...' : `Pay ₹${selectedPlan.price} & Activate VIP`}
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
 
                 <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-400 space-y-2 font-mono">
@@ -4483,6 +5466,328 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
             )}
           </div>
         </div>
+
+        {/* CONNECT WORLDWIDE GLOBAL ACCOUNT MODAL */}
+        {showAddAccountModal && (
+          <div className="fixed inset-0 z-[60] bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-emerald-500/40 rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
+              {/* Header */}
+              <div className="p-5 px-6 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-xl shadow-md">
+                    🌍
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white font-['Syne']">
+                      Connect Global Account & Wallet
+                    </h3>
+                    <p className="text-[11px] text-slate-400 font-mono">
+                      Activate "Global-Ready" status for worldwide payouts & payments
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAddAccountModal(false)}
+                  className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center text-xs font-bold transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Body Form */}
+              <form onSubmit={handleConnectGlobalAccount} className="p-6 overflow-y-auto space-y-4">
+                {/* Account Type Selector */}
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1.5">
+                    Select Account / Wallet Type
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { type: 'bank_swift', label: 'SWIFT Bank', icon: '🏛️' },
+                      { type: 'iban_sepa', label: 'SEPA IBAN', icon: '🇪🇺' },
+                      { type: 'paypal', label: 'PayPal', icon: '🌐' },
+                      { type: 'wise', label: 'Wise Wire', icon: '💱' },
+                      { type: 'crypto', label: 'Crypto Web3', icon: '🪙' },
+                      { type: 'apple_pay', label: 'Apple Pay', icon: '🍎' },
+                      { type: 'upi', label: 'NPCI UPI', icon: '🇮🇳' },
+                    ].map((t) => (
+                      <button
+                        key={t.type}
+                        type="button"
+                        onClick={() => {
+                          setNewAccType(t.type as any);
+                          if (t.type === 'iban_sepa') {
+                            setNewAccCurrency('EUR');
+                            setNewAccCountry('European Union');
+                            setNewAccFlag('🇪🇺');
+                          } else if (t.type === 'upi') {
+                            setNewAccCurrency('INR');
+                            setNewAccCountry('India');
+                            setNewAccFlag('🇮🇳');
+                          } else if (t.type === 'crypto') {
+                            setNewAccCurrency('USD');
+                            setNewAccCountry('Global Web3');
+                            setNewAccFlag('🪙');
+                          }
+                        }}
+                        className={`p-2.5 rounded-xl border text-xs flex flex-col items-center gap-1 font-semibold transition-all ${
+                          newAccType === t.type
+                            ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 shadow-md'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-900 hover:text-white'
+                        }`}
+                      >
+                        <span className="text-base">{t.icon}</span>
+                        <span className="text-[10px] font-mono">{t.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Bank / Institution Specific Fields */}
+                {(newAccType === 'bank_swift' || newAccType === 'iban_sepa') && (
+                  <>
+                    <div>
+                      <label className="text-xs font-bold text-slate-300 block mb-1">
+                        Select Global Bank
+                      </label>
+                      <select
+                        value={newAccBank}
+                        onChange={(e) => {
+                          setNewAccBank(e.target.value);
+                          if (e.target.value.includes('Chase')) {
+                            setNewAccSwift('CHASUS33');
+                            setNewAccCountry('United States');
+                            setNewAccFlag('🇺🇸');
+                          } else if (e.target.value.includes('HSBC')) {
+                            setNewAccSwift('MIDLGB22');
+                            setNewAccCountry('United Kingdom');
+                            setNewAccFlag('🇬🇧');
+                          } else if (e.target.value.includes('Deutsche')) {
+                            setNewAccSwift('DEUTDEFF');
+                            setNewAccCountry('Germany');
+                            setNewAccFlag('🇩🇪');
+                          } else if (e.target.value.includes('Emirates')) {
+                            setNewAccSwift('EBILAEAD');
+                            setNewAccCountry('United Arab Emirates');
+                            setNewAccFlag('🇦🇪');
+                          } else if (e.target.value.includes('HDFC') || e.target.value.includes('SBI')) {
+                            setNewAccSwift('HDFCINBB');
+                            setNewAccCountry('India');
+                            setNewAccFlag('🇮🇳');
+                          }
+                        }}
+                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                      >
+                        <optgroup label="🇺🇸 North America">
+                          <option value="JPMorgan Chase Bank">JPMorgan Chase Bank N.A. (USA)</option>
+                          <option value="Bank of America">Bank of America (USA)</option>
+                          <option value="Wells Fargo">Wells Fargo Bank (USA)</option>
+                          <option value="Citibank N.A.">Citibank N.A. (USA)</option>
+                          <option value="Royal Bank of Canada">Royal Bank of Canada (Canada)</option>
+                          <option value="TD Bank">Toronto-Dominion Bank (Canada)</option>
+                        </optgroup>
+                        <optgroup label="🇪🇺 Europe & UK">
+                          <option value="HSBC Bank UK">HSBC Bank PLC (UK)</option>
+                          <option value="Barclays Bank">Barclays Bank (UK)</option>
+                          <option value="Deutsche Bank">Deutsche Bank AG (Germany)</option>
+                          <option value="BNP Paribas">BNP Paribas (France)</option>
+                          <option value="UBS Switzerland">UBS Group AG (Switzerland)</option>
+                          <option value="Santander">Banco Santander (Spain)</option>
+                        </optgroup>
+                        <optgroup label="🇦🇪 Middle East & GCC">
+                          <option value="Emirates NBD">Emirates NBD (Dubai, UAE)</option>
+                          <option value="First Abu Dhabi Bank">First Abu Dhabi Bank (UAE)</option>
+                          <option value="Saudi National Bank">Saudi National Bank (SNB, KSA)</option>
+                          <option value="Qatar National Bank">Qatar National Bank (QNB, Qatar)</option>
+                        </optgroup>
+                        <optgroup label="🌏 Asia-Pacific & India">
+                          <option value="DBS Bank Singapore">DBS Bank (Singapore)</option>
+                          <option value="Commonwealth Bank">Commonwealth Bank (Australia)</option>
+                          <option value="HDFC Bank">HDFC Bank (India)</option>
+                          <option value="State Bank of India">State Bank of India (SBI, India)</option>
+                          <option value="ICICI Bank">ICICI Bank (India)</option>
+                          <option value="Bank of China">Bank of China (China)</option>
+                        </optgroup>
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-bold text-slate-300 block mb-1">
+                          Account Holder Full Name
+                        </label>
+                        <input
+                          type="text"
+                          value={newAccHolder}
+                          onChange={(e) => setNewAccHolder(e.target.value)}
+                          placeholder="e.g. John Doe"
+                          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-slate-300 block mb-1">
+                          Account Number / IBAN
+                        </label>
+                        <input
+                          type="text"
+                          value={newAccNumber}
+                          onChange={(e) => setNewAccNumber(e.target.value)}
+                          placeholder={newAccType === 'iban_sepa' ? 'DE89 3704 0044 0532 0130 00' : '987654321098'}
+                          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-bold text-slate-300 block mb-1">
+                          SWIFT / BIC / Routing Code
+                        </label>
+                        <input
+                          type="text"
+                          value={newAccSwift}
+                          onChange={(e) => setNewAccSwift(e.target.value)}
+                          placeholder="CHASUS33XXX"
+                          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono uppercase"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-slate-300 block mb-1">
+                          Settlement Currency
+                        </label>
+                        <select
+                          value={newAccCurrency}
+                          onChange={(e) => setNewAccCurrency(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                        >
+                          <option value="USD">USD ($ United States Dollar)</option>
+                          <option value="EUR">EUR (€ Eurozone)</option>
+                          <option value="GBP">GBP (£ British Pound)</option>
+                          <option value="AED">AED (د.إ UAE Dirham)</option>
+                          <option value="INR">INR (₹ Indian Rupee)</option>
+                          <option value="CAD">CAD ($ Canadian Dollar)</option>
+                          <option value="AUD">AUD ($ Australian Dollar)</option>
+                          <option value="SGD">SGD ($ Singapore Dollar)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* PayPal & Wise Fields */}
+                {(newAccType === 'paypal' || newAccType === 'wise') && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-300 block mb-1">
+                        {newAccType === 'paypal' ? 'PayPal Registered Email' : 'Wise Multi-Currency Email'}
+                      </label>
+                      <input
+                        type="email"
+                        value={newAccEmail}
+                        onChange={(e) => setNewAccEmail(e.target.value)}
+                        placeholder="your-email@example.com"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-300 block mb-1">
+                        Preferred Settlement Currency
+                      </label>
+                      <select
+                        value={newAccCurrency}
+                        onChange={(e) => setNewAccCurrency(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                      >
+                        <option value="USD">USD ($) Worldwide Standard</option>
+                        <option value="EUR">EUR (€) Eurozone</option>
+                        <option value="GBP">GBP (£) United Kingdom</option>
+                        <option value="INR">INR (₹) India Fast Settlement</option>
+                        <option value="AED">AED (د.إ) UAE Dirham</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* Crypto Web3 Fields */}
+                {newAccType === 'crypto' && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-300 block mb-1">
+                        Crypto Wallet Public Address (USDT / USDC / BTC / ETH / SOL)
+                      </label>
+                      <input
+                        type="text"
+                        value={newAccCryptoAddr}
+                        onChange={(e) => setNewAccCryptoAddr(e.target.value)}
+                        placeholder="0x71C...b89F or TX... (TRC20 / ERC20 / Solana)"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                        required
+                      />
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-cyan-300">
+                      ⚡ Instant Smart-Contract Settlement via USDT TRC20, Polygon & Solana.
+                    </div>
+                  </div>
+                )}
+
+                {/* UPI Fields */}
+                {newAccType === 'upi' && (
+                  <div>
+                    <label className="text-xs font-bold text-slate-300 block mb-1">
+                      Virtual Payment Address (UPI ID)
+                    </label>
+                    <input
+                      type="text"
+                      value={newAccEmail}
+                      onChange={(e) => setNewAccEmail(e.target.value)}
+                      placeholder="username@okhdfcbank or phone@paytm"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                      required
+                    />
+                  </div>
+                )}
+
+                {/* Apple Pay Fields */}
+                {newAccType === 'apple_pay' && (
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-center space-y-2">
+                    <div className="text-3xl">🍎</div>
+                    <div className="text-xs font-bold text-white">Apple Pay Biometric Direct Clearing</div>
+                    <div className="text-[11px] font-mono text-slate-400">
+                      Link your Apple ID Wallet with TouchID / FaceID 2FA tokenization.
+                    </div>
+                  </div>
+                )}
+
+                {/* Submit Verification Button */}
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={isVerifyingAccount}
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 via-cyan-500 to-indigo-600 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-black text-xs shadow-lg shadow-emerald-950/50 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {isVerifyingAccount ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
+                        <span>Verifying Account with Clearing Gateway...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 text-slate-950 stroke-[3]" />
+                        <span>Verify & Activate "Global-Ready" Status</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
