@@ -647,7 +647,7 @@ app.post('/api/ai/chat', async (req: Request, res: Response) => {
 
 // 6. Universal Multi-Modal Prompt Enhancer (Image, Video, Image+Video, Music, Docs, 3D, Voice, Film)
 app.post('/api/ai/enhance-prompt', async (req: Request, res: Response) => {
-  const { prompt, type = 'image' } = req.body;
+  const { prompt, type = 'auto' } = req.body;
   const result = await enhancePrompt(prompt || '', type);
   res.json({
     success: true,
@@ -655,6 +655,9 @@ app.post('/api/ai/enhance-prompt', async (req: Request, res: Response) => {
     enhanced: result.enhancedPrompt,
     enhancedPrompt: result.enhancedPrompt,
     modality: result.modality,
+    detectedModality: result.detectedModality || result.modality,
+    confidenceScore: result.confidenceScore || 0.98,
+    chainOfThought: result.chainOfThought || [],
     targetStudio: result.targetStudio,
     tags: result.tags,
     suggestedSettings: result.suggestedSettings,

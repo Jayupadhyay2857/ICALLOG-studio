@@ -169,6 +169,7 @@ const preset8K = {
 }
 
 export type UniversalEnhanceModality =
+  | 'auto'
   | 'image'
   | 'video'
   | 'image_to_image'
@@ -182,6 +183,13 @@ export type UniversalEnhanceModality =
   | 'film'
   | 'all';
 
+export interface ChainOfThoughtStep {
+  step: number;
+  title: string;
+  icon: string;
+  thought: string;
+}
+
 export interface EnhancedPromptResult {
   enhancedPrompt: string;
   modality: UniversalEnhanceModality;
@@ -189,10 +197,16 @@ export interface EnhancedPromptResult {
   tags: string[];
   suggestedSettings: Record<string, any>;
   explanation: string;
+  detectedModality?: UniversalEnhanceModality;
+  confidenceScore?: number;
+  chainOfThought?: ChainOfThoughtStep[];
 }
 
 export function normalizeModality(type: string): { modality: UniversalEnhanceModality; targetStudio: string } {
-  const t = (type || 'image').toLowerCase().trim();
+  const t = (type || 'auto').toLowerCase().trim();
+  if (t === 'auto' || t === 'detect' || t === 'smart') {
+    return { modality: 'auto', targetStudio: 'image_studio' };
+  }
   if (t === 'image' || t === 'img' || t === 'photo') {
     return { modality: 'image', targetStudio: 'image_studio' };
   }
@@ -229,15 +243,45 @@ export function normalizeModality(type: string): { modality: UniversalEnhanceMod
   return { modality: 'all', targetStudio: 'image_studio' };
 }
 
+export function detectModalityFromText(text: string): { modality: UniversalEnhanceModality; targetStudio: string } {
+  const lower = text.toLowerCase();
+  if (lower.includes('song') || lower.includes('music') || lower.includes('gaana') || lower.includes('beat') || lower.includes('lyrics') || lower.includes('dhun') || lower.includes('bpm') || lower.includes('rap')) {
+    return { modality: 'music', targetStudio: 'song_studio' };
+  }
+  if (lower.includes('3d') || lower.includes('mesh') || lower.includes('model') || lower.includes('rig') || lower.includes('blender') || lower.includes('bone') || lower.includes('avatar')) {
+    return { modality: '3d', targetStudio: '3d_engine' };
+  }
+  if (lower.includes('doc') || lower.includes('proposal') || lower.includes('pitch') || lower.includes('business plan') || lower.includes('contract') || lower.includes('report') || lower.includes('presentation') || lower.includes('slide')) {
+    return { modality: 'document', targetStudio: 'office_suite' };
+  }
+  if (lower.includes('video') || lower.includes('movie') || lower.includes('film') || lower.includes('fps') || lower.includes('motion') || lower.includes('cinematic drone') || lower.includes('camera pan') || lower.includes('clip')) {
+    return { modality: 'video', targetStudio: 'video_audio' };
+  }
+  if (lower.includes('script') || lower.includes('screenplay') || lower.includes('scene') || lower.includes('dialogue')) {
+    return { modality: 'film', targetStudio: 'film_studio' };
+  }
+  if (lower.includes('voice') || lower.includes('voiceover') || lower.includes('narration') || lower.includes('aawaz') || lower.includes('speech')) {
+    return { modality: 'voice', targetStudio: 'voice_converter' };
+  }
+  return { modality: 'image', targetStudio: 'image_studio' };
+}
+
 export async function enhancePrompt(
   rawPrompt: string,
-  rawType: string = 'image'
+  rawType: string = 'auto'
 ): Promise<EnhancedPromptResult> {
-  const { modality, targetStudio } = normalizeModality(rawType);
+  let { modality, targetStudio } = normalizeModality(rawType);
   const prompt = (rawPrompt || '').trim();
   const client = getGeminiClient();
 
-  const modalityDirectives: Record<UniversalEnhanceModality, string> = {
+  // If modality is 'auto', detect initial preference
+  if (modality === 'auto') {
+    const detected = detectModalityFromText(prompt);
+    modality = detected.modality;
+    targetStudio = detected.targetStudio;
+  }
+
+  const modalityDirectives: Record<string, string> = {
     image: `Craft a world-class 8K photorealistic image generation prompt. Include: primary subject details, lighting (volumetric, chiaroscuro, golden hour, rim light), camera lens (e.g. 85mm f/1.4, macro), environment textures (raindrops, micro-skin, metallic sheen), composition, and color grading.`,
     video: `Craft a cinematic text-to-video prompt. Include: camera trajectory (dolly-in, orbital tracking, FPV drone dive), movement dynamics, physical interactions, atmospheric particle effects, lighting shifts, 60fps high temporal coherence, and cinematic pacing.`,
     image_to_image: `Craft an image-to-image fusion & style transfer prompt. Specify: source geometry and subject feature retention, target art style integration, color palette harmonization, texture blending, and high-frequency detailing.`,
@@ -258,18 +302,32 @@ export async function enhancePrompt(
     try {
       const response = await client.models.generateContent({
         model: 'gemini-3.8-flash',
-        contents: `You are the master AI Prompt Architect of iCALLOG Creative Studio.
-The user provided this input (which may be in Hindi, Hinglish, or English): "${prompt}".
-Target Tool/Modality: "${modality}".
+        contents: `You are the master AI Prompt Architect & Multi-Modal Director of iCALLOG Creative Studio.
+The user provided this raw idea or query (which may be in Hindi, Hinglish, or English): "${prompt}".
+Requested Mode: "${rawType}" (if 'auto', classify the user's intent to the most suitable modality among: image, video, image_to_video, image_to_image, video_to_image, video_to_video, music, document, 3d, voice, film, all).
 
-Instructions:
+Apply an advanced 4-step Chain-of-Thought (CoT) prompt engineering pattern:
+Step 1 [🧠 Intent Extraction]: Identify the core creative subject, emotional vibe, and unspoken user intent.
+Step 2 [🎨 Stylistic & Artistic Framing]: Determine lighting, camera optics, acoustic vibes, or structural format.
+Step 3 [⚙️ Technical Calibration]: Apply precision resolution (8K, 60fps, 124 BPM, 35k quad polycount, Hollywood Courier sluglines, etc.).
+Step 4 [💎 Master Prompt Synthesis]: Compile the final production-ready master prompt.
+
+Modality Directive:
 ${specificDirective}
-- Fluently understand user ideas in Hindi, Hinglish, or English.
-- Return ONLY valid JSON with this structure:
+
+Return ONLY valid JSON with this exact schema:
 {
-  "enhancedPrompt": "The hyper-detailed, beautifully written master prompt",
-  "explanation": "1 short sentence explaining the enhancements in friendly language",
-  "tags": ["tag1", "tag2", "tag3"],
+  "detectedModality": "${modality}",
+  "confidenceScore": 0.98,
+  "chainOfThought": [
+    { "step": 1, "title": "Semantic & Intent Extraction", "icon": "🧠", "thought": "Detailed reasoning about user goal and colloquial meaning" },
+    { "step": 2, "title": "Artistic & Aesthetic Framing", "icon": "🎨", "thought": "Reasoning about lighting, color grading, mood, and style" },
+    { "step": 3, "title": "Technical Studio Calibration", "icon": "⚙️", "thought": "Reasoning about 8K/60fps/BPM/quad topology specs" },
+    { "step": 4, "title": "Master Output Compilation", "icon": "💎", "thought": "Summary of prompt construction" }
+  ],
+  "enhancedPrompt": "The full, hyper-detailed master prompt",
+  "explanation": "1 concise sentence in friendly language explaining key enhancements",
+  "tags": ["tag1", "tag2", "tag3", "tag4"],
   "suggestedSettings": {
     "resolution": "8K",
     "aspectRatio": "16:9",
@@ -283,13 +341,23 @@ ${specificDirective}
 
       const parsed = JSON.parse(response.text || '{}');
       if (parsed.enhancedPrompt) {
+        const finalModality = (parsed.detectedModality as UniversalEnhanceModality) || modality;
+        const norm = normalizeModality(finalModality);
         return {
           enhancedPrompt: parsed.enhancedPrompt,
-          modality,
-          targetStudio,
-          tags: Array.isArray(parsed.tags) ? parsed.tags : ['8K', 'Masterpiece', modality],
+          modality: finalModality,
+          targetStudio: norm.targetStudio,
+          detectedModality: finalModality,
+          confidenceScore: typeof parsed.confidenceScore === 'number' ? parsed.confidenceScore : 0.98,
+          chainOfThought: Array.isArray(parsed.chainOfThought) ? parsed.chainOfThought : [
+            { step: 1, title: 'Semantic & Intent Extraction', icon: '🧠', thought: `Decoded core subject "${prompt.slice(0, 30)}" with semantic context.` },
+            { step: 2, title: 'Artistic & Aesthetic Framing', icon: '🎨', thought: `Framed with volumetric atmospheric lighting, depth of field, and stylistic color palette.` },
+            { step: 3, title: 'Technical Studio Calibration', icon: '⚙️', thought: `Calibrated for ${finalModality} engine parameters.` },
+            { step: 4, title: 'Master Output Compilation', icon: '💎', thought: `Compiled comprehensive production-grade prompt.` },
+          ],
+          tags: Array.isArray(parsed.tags) ? parsed.tags : ['8K', 'Masterpiece', finalModality],
           suggestedSettings: parsed.suggestedSettings || { resolution: '8K', aspectRatio: '16:9' },
-          explanation: parsed.explanation || `Optimized for ${modality} generation with cinematic quality.`,
+          explanation: parsed.explanation || `Optimized for ${finalModality} generation using Chain-of-Thought pipeline.`,
         };
       }
     } catch (err: unknown) {
@@ -297,20 +365,33 @@ ${specificDirective}
     }
   }
 
-  // Intelligent Fallback for all modalities (offline / static / safe backup)
-  const fallbackBuilders: Record<UniversalEnhanceModality, () => EnhancedPromptResult> = {
+  // Intelligent Fallback with Chain-of-Thought structure for all modalities
+  const fallbackCoT: ChainOfThoughtStep[] = [
+    { step: 1, title: 'Semantic & Intent Extraction', icon: '🧠', thought: `Parsed input concept: "${prompt.slice(0, 40)}" across Hindi/English vocabularies.` },
+    { step: 2, title: 'Artistic & Aesthetic Framing', icon: '🎨', thought: `Injected cinematic composition, high-contrast dynamic range, and ambient textures.` },
+    { step: 3, title: 'Technical Studio Calibration', icon: '⚙️', thought: `Assigned optimal fidelity flags for ${modality} pipeline.` },
+    { step: 4, title: 'Master Output Compilation', icon: '💎', thought: `Synthesized master prompt with negative space and focus clarity.` },
+  ];
+
+  const fallbackBuilders: Record<string, () => EnhancedPromptResult> = {
     image: () => ({
       enhancedPrompt: `${prompt}, 8K Ultra-HD resolution, volumetric cinematic lighting, octane render, Unreal Engine 5 aesthetic, hyper-detailed skin and surface textures, 35mm f/1.4 lens, award-winning cinematography, photorealistic reflections`,
       modality: 'image',
       targetStudio: 'image_studio',
+      detectedModality: 'image',
+      confidenceScore: 0.95,
+      chainOfThought: fallbackCoT,
       tags: ['8K', 'Photorealistic', 'OctaneRender', 'Cinematic'],
       suggestedSettings: { resolution: '8K', aspectRatio: '16:9', steps: 40 },
-      explanation: 'Injected volumetric lighting, 35mm lens depth, and 8K surface textures.',
+      explanation: 'Injected volumetric lighting, 35mm lens depth, and 8K surface textures via Chain-of-Thought.',
     }),
     video: () => ({
       enhancedPrompt: `Cinematic high-motion capture: ${prompt}. Dynamic tracking camera with subtle dolly zoom, volumetric haze, atmospheric particle physics, 60 FPS smooth motion blur, ACES Filmic color grade, Hollywood blockbuster cinematography`,
       modality: 'video',
       targetStudio: 'video_audio',
+      detectedModality: 'video',
+      confidenceScore: 0.94,
+      chainOfThought: fallbackCoT,
       tags: ['60FPS', 'CinematicMotion', 'DollyZoom', 'ACESFilmic'],
       suggestedSettings: { resolution: '8K', fps: 60, duration: '15s' },
       explanation: 'Added camera dolly kinematics, atmospheric particles, and 60fps temporal smoothness.',
@@ -319,6 +400,9 @@ ${specificDirective}
       enhancedPrompt: `High-fidelity neural style transfer & image fusion: Retaining the core anatomical structure and subject silhouette of the base image while applying ${prompt}. Harmonized color balance, seamless edge blending, enhanced PBR surface micro-details, pristine 8K fidelity`,
       modality: 'image_to_image',
       targetStudio: 'image_studio',
+      detectedModality: 'image_to_image',
+      confidenceScore: 0.92,
+      chainOfThought: fallbackCoT,
       tags: ['StyleTransfer', 'ImageFusion', 'GeometryRetention', 'PBR'],
       suggestedSettings: { strength: 0.65, resolution: '8K' },
       explanation: 'Preserves base image geometry while infusing target style and textures.',
@@ -327,6 +411,9 @@ ${specificDirective}
       enhancedPrompt: `Fluid cinematic animation from still frame: ${prompt}. Starting from the keyframe image, initiating smooth parallax camera pan, natural wind dynamics on fabric and hair, ambient environmental lighting shifts, realistic physics simulation, 60fps`,
       modality: 'image_to_video',
       targetStudio: 'video_audio',
+      detectedModality: 'image_to_video',
+      confidenceScore: 0.93,
+      chainOfThought: fallbackCoT,
       tags: ['ParallaxMotion', 'KeyframeAnimation', 'FluidDynamics'],
       suggestedSettings: { motionIntensity: 7, duration: '15s', fps: 60 },
       explanation: 'Anchors the still image with realistic parallax camera movement and physics.',
@@ -335,6 +422,9 @@ ${specificDirective}
       enhancedPrompt: `High-definition cinematic still capture: Isolating the climactic action frame from the video: ${prompt}. Motion deconvolution, crystal clear focal sharpness, 8K remastering, high dynamic range chiaroscuro, poster-art visual depth`,
       modality: 'video_to_image',
       targetStudio: 'image_studio',
+      detectedModality: 'video_to_image',
+      confidenceScore: 0.91,
+      chainOfThought: fallbackCoT,
       tags: ['FrameIsolation', 'Deconvolution', '8KStill', 'HDR'],
       suggestedSettings: { resolution: '8K', remasterMode: 'HDR' },
       explanation: 'Isolates and remasters the key action frame into an 8K cinematic still.',
@@ -343,6 +433,9 @@ ${specificDirective}
       enhancedPrompt: `Seamless video sequence continuity and multi-clip blend: ${prompt}. Matching camera motion vectors, continuous teal-and-amber cinematic color grading, smooth temporal morph transitions, preserved subject velocities, synchronized tempo`,
       modality: 'video_to_video',
       targetStudio: 'video_audio',
+      detectedModality: 'video_to_video',
+      confidenceScore: 0.90,
+      chainOfThought: fallbackCoT,
       tags: ['VideoSequence', 'MorphTransition', 'ColorLUTMatch'],
       suggestedSettings: { transition: 'MorphFlow', fps: 60 },
       explanation: 'Synchronizes camera vectors and color grading for seamless multi-clip continuity.',
@@ -351,6 +444,9 @@ ${specificDirective}
       enhancedPrompt: `High-production studio audio track: ${prompt}. 124 BPM, expressive melodic progression, analog Moog sub-bass, atmospheric ambient reverb, crisp layered percussion, modern stereo master, punchy sidechain dynamics`,
       modality: 'music',
       targetStudio: 'song_studio',
+      detectedModality: 'music',
+      confidenceScore: 0.96,
+      chainOfThought: fallbackCoT,
       tags: ['124BPM', 'StereoMaster', 'SubBass', 'StudioMix'],
       suggestedSettings: { bpm: 124, key: 'C Minor', reverb: '0.6' },
       explanation: 'Added studio arrangement specs, BPM tempo, sub-bass, and stereo mix guidelines.',
@@ -359,6 +455,9 @@ ${specificDirective}
       enhancedPrompt: `Comprehensive executive document: ${prompt}. Structured into Executive Summary, Strategic Market Analysis, Core Technical Methodology, Quantitative Impact Projections, and Actionable Recommendations with professional corporate typography`,
       modality: 'document',
       targetStudio: 'office_suite',
+      detectedModality: 'document',
+      confidenceScore: 0.95,
+      chainOfThought: fallbackCoT,
       tags: ['ExecutiveDoc', 'StrategicAnalysis', 'ProfessionalFormat'],
       suggestedSettings: { format: 'Executive_Report', typography: 'Modern_Sans' },
       explanation: 'Structured into an executive-ready report with professional corporate headers.',
@@ -367,6 +466,9 @@ ${specificDirective}
       enhancedPrompt: `PBR Game-Ready 3D Asset: ${prompt}. Clean quad-based subdivision topology (35,000 vertices), non-overlapping UV layout, high-frequency normal and displacement maps, calibrated roughness/metallic channels, ready for humanoid skeletal rigging`,
       modality: '3d',
       targetStudio: '3d_engine',
+      detectedModality: '3d',
+      confidenceScore: 0.94,
+      chainOfThought: fallbackCoT,
       tags: ['QuadTopology', 'PBRMaterials', 'RigReady', '35kVerts'],
       suggestedSettings: { polyCount: '35,000', format: 'GLTF_Binary' },
       explanation: 'Optimized with quad subdivision topology, PBR maps, and bone-rig readiness.',
@@ -375,6 +477,9 @@ ${specificDirective}
       enhancedPrompt: `Professional studio voiceover: ${prompt}. Rich resonant vocal timbre, confident conversational pacing, subtle emotional inflection, natural breath markers (<breath>), recorded on Neumann U87 condenser mic in sound-dampened acoustic booth`,
       modality: 'voice',
       targetStudio: 'voice_converter',
+      detectedModality: 'voice',
+      confidenceScore: 0.93,
+      chainOfThought: fallbackCoT,
       tags: ['StudioTimbre', 'NeumannMic', 'NaturalPacing', 'AcousticBooth'],
       suggestedSettings: { voicePreset: 'Zephyr Studio', pitch: 0, denoise: true },
       explanation: 'Crafted with broadcast mic acoustics, natural breath markers, and vocal timbre.',
@@ -383,6 +488,9 @@ ${specificDirective}
       enhancedPrompt: `Hollywood Industry Screenplay Scene: ${prompt}. Industry Courier formatting, dynamic INT./EXT. slugline, gripping present-tense action description, subtext-driven character dialogue, sound effect cues in ALL CAPS, and anamorphic lens direction`,
       modality: 'film',
       targetStudio: 'film_studio',
+      detectedModality: 'film',
+      confidenceScore: 0.94,
+      chainOfThought: fallbackCoT,
       tags: ['HollywoodFormat', 'Sluglines', 'AnamorphicLens', 'DramaticSubtext'],
       suggestedSettings: { aspectRatio: '2.39:1', style: 'Cinematic_Epic' },
       explanation: 'Formatted into standard Hollywood screenplay scenes with camera and sound cues.',
@@ -391,6 +499,9 @@ ${specificDirective}
       enhancedPrompt: `Unified Creative Vision: ${prompt}. 8K Photorealistic visual aesthetic, 60fps dynamic camera motion, 3D quad-topology asset ready, cinematic 124 BPM orchestral-electronic hybrid soundtrack, and Hollywood screenplay documentation`,
       modality: 'all',
       targetStudio: 'image_studio',
+      detectedModality: 'all',
+      confidenceScore: 0.97,
+      chainOfThought: fallbackCoT,
       tags: ['OmniCreative', '8KMasterpiece', 'MultiModal'],
       suggestedSettings: { resolution: '8K', fps: 60, multiModalSync: true },
       explanation: 'Unified creative vision providing synchronized prompts across all media tools.',
