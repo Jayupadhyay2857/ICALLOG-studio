@@ -7,6 +7,8 @@ export type ActiveTab =
   | 'neural_cinema'
   | 'metaverse_world'
   | 'master_toolkit'
+  | 'quantum_director'
+  | 'exoplanet_world'
   | 'collab_timeline'
   | 'podcast_studio'
   | 'pro_camera'

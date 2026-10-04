@@ -56,6 +56,8 @@ import { MetaverseWorldStudio } from './components/MetaverseWorldStudio.tsx';
 import { MasterToolkitStudio } from './components/MasterToolkitStudio.tsx';
 import { CollabWhiteboardTimelineStudio } from './components/CollabWhiteboardTimelineStudio.tsx';
 import { PodcastStudio } from './components/PodcastStudio.tsx';
+import { QuantumDirectorStudio } from './components/QuantumDirectorStudio.tsx';
+import { ExoplanetStudio } from './components/ExoplanetStudio.tsx';
 import { getUserStateFromIDB } from './lib/offlineIndexedDB.ts';
 import { registerVoiceHandlers } from './lib/voiceNavigation.ts';
 import { executeAutoSave, extendSessionToken } from './lib/sessionManager.ts';
@@ -416,6 +418,20 @@ export default function App() {
         )}
         {activeTab === 'master_toolkit' && (
           <MasterToolkitStudio
+            user={user}
+            setActiveTab={(tab) => setActiveTab(tab as ActiveTab)}
+            onNotify={notify}
+          />
+        )}
+        {activeTab === 'quantum_director' && (
+          <QuantumDirectorStudio
+            user={user}
+            setActiveTab={(tab) => setActiveTab(tab as ActiveTab)}
+            onNotify={notify}
+          />
+        )}
+        {activeTab === 'exoplanet_world' && (
+          <ExoplanetStudio
             user={user}
             setActiveTab={(tab) => setActiveTab(tab as ActiveTab)}
             onNotify={notify}

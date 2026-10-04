@@ -1003,6 +1003,8 @@ Thank you for building with AI Studio!
     { id: 'neural_cinema', label: 'Neural Cinema', icon: '🧠', badge: 'Mind-to-Film' },
     { id: 'metaverse_world', label: 'Metaverse World', icon: '🌐', badge: '3D Spatial' },
     { id: 'master_toolkit', label: 'A-to-Z Master Toolkit', icon: '🌟', badge: 'A to Z' },
+    { id: 'quantum_director', label: 'Quantum AI Director', icon: '🤖', badge: '1-Click Auto' },
+    { id: 'exoplanet_world', label: 'Exoplanet Generator', icon: '🪐', badge: 'Cosmic' },
     { id: 'collab_timeline', label: 'Whiteboard & Timelines', icon: '📋', badge: 'Gantt & Kanban' },
     { id: 'podcast_studio', label: 'AI Podcast Co-Host', icon: '🎙️', badge: 'Dual-Voice' },
     { id: 'pro_camera', label: 'Pro Camera', icon: '📸', badge: '8K HDR' },
