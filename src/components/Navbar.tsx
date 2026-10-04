@@ -77,6 +77,7 @@ interface NavbarProps {
   openHistoryModal: () => void;
   openProfileModal: (tab?: ProfileTab) => void;
   openCookieModal?: () => void;
+  openOmniEnhanceModal?: () => void;
   onSelectSubTab?: (tab: ActiveTab, subTab: string) => void;
 }
 
@@ -90,6 +91,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   openHistoryModal,
   openProfileModal,
   openCookieModal,
+  openOmniEnhanceModal,
   onSelectSubTab,
 }) => {
   const { t, currentLangOption } = useLanguage();
@@ -1213,6 +1215,19 @@ Thank you for building with AI Studio!
               </div>
             </button>
 
+            {/* Omni Enhance AI Universal Prompt Booster Trigger */}
+            {openOmniEnhanceModal && (
+              <button
+                id="omni-enhance-nav-btn"
+                onClick={openOmniEnhanceModal}
+                title="Omni Enhance AI (यूनिवर्सल प्रॉम्प्ट बूस्टर - Image, Video, Music, Docs, 3D)"
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-cyan-950/50 flex items-center gap-1.5 transition-all hover:scale-105 border border-cyan-400/40"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+                <span className="font-['Syne'] font-extrabold tracking-wide">✨ Omni Enhance AI</span>
+              </button>
+            )}
+
             {/* Secret Admin Override Logo */}
             <button
               id="secret-admin-trigger-btn"
@@ -1454,26 +1469,40 @@ Thank you for building with AI Studio!
                 <span className="text-xs text-slate-400">Edit</span>
               </div>
 
-              <div className="flex flex-wrap sm:flex-nowrap gap-2">
-                <button
-                  onClick={() => {
-                    openProfileModal();
-                    setMobileMenuOpen(false);
-                  }}
-                  className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold text-center flex items-center justify-center gap-2 shadow-md"
-                >
-                  <CreditCard className="w-4 h-4" /> My Profile, VIP & Settings
-                </button>
-                <button
-                  onClick={() => {
-                    openAdminModal();
-                    setMobileMenuOpen(false);
-                  }}
-                  className="py-2 px-3 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
-                >
-                  <KeyRound className="w-3.5 h-3.5" />
-                  <span>Admin</span>
-                </button>
+              <div className="flex flex-col gap-2">
+                {openOmniEnhanceModal && (
+                  <button
+                    onClick={() => {
+                      openOmniEnhanceModal();
+                      setMobileMenuOpen(false);
+                    }}
+                    className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-cyan-600 via-indigo-600 to-purple-600 hover:from-cyan-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-cyan-950/40"
+                  >
+                    <Sparkles className="w-4 h-4 text-cyan-200" />
+                    <span>Omni Enhance AI (यूनिवर्सल प्रॉम्प्ट बूस्टर)</span>
+                  </button>
+                )}
+                <div className="flex flex-wrap sm:flex-nowrap gap-2">
+                  <button
+                    onClick={() => {
+                      openProfileModal();
+                      setMobileMenuOpen(false);
+                    }}
+                    className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold text-center flex items-center justify-center gap-2 shadow-md"
+                  >
+                    <CreditCard className="w-4 h-4" /> My Profile, VIP & Settings
+                  </button>
+                  <button
+                    onClick={() => {
+                      openAdminModal();
+                      setMobileMenuOpen(false);
+                    }}
+                    className="py-2 px-3 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    <span>Admin</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>

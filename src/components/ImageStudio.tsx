@@ -198,21 +198,21 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({
     try {
       setIsGenerating(true);
       const res = await triggerImageGen({ prompt, style, resolution, aspectRatio });
-      onNotify(`${resolution} Render Queued`, `Job ${res.jobId} dispatched to queue (${activeResConfig.tokens} Tokens)!`, 'success');
+      onNotify(`${resolution} Render Active`, `Generating prompt: "${prompt.slice(0, 30)}..." (${activeResConfig.tokens} Tokens)`, 'info');
       
-      // Update preview with curated high-fidelity samples
-      setTimeout(() => {
-        const samples = [
-          'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1600&q=90',
-          'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=1600&q=90',
-          'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?auto=format&fit=crop&w=1600&q=90',
-          'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=1600&q=90',
-        ];
-        const chosen = samples[Math.floor(Math.random() * samples.length)];
-        setGeneratedImage(chosen);
+      const realImage = res.assetUrl || res.job?.payload?.generatedUrl || res.job?.resultUrl;
+      if (realImage) {
+        setGeneratedImage(realImage);
         setIsGenerating(false);
-        onNotify('Render Complete', `Image generated at ${resolution} (${activeResConfig.dimensions})`, 'success');
-      }, 1400);
+        onNotify('Render Complete', `Real AI image rendered at ${resolution} (${activeResConfig.dimensions})`, 'success');
+      } else {
+        setTimeout(() => {
+          const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt + ', ' + style + ' style')}?width=1024&height=1024&nologo=true&model=flux`;
+          setGeneratedImage(fallbackUrl);
+          setIsGenerating(false);
+          onNotify('Render Complete', `Image generated at ${resolution} (${activeResConfig.dimensions})`, 'success');
+        }, 1000);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Generation failed';
       onNotify('Generation Notice', msg, 'error');
@@ -224,9 +224,12 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({
   const handleUpscaleTo8K = async () => {
     try {
       setIsUpscaling(true);
-      await trigger8kUpscale(generatedImage, '8K');
+      const res = await trigger8kUpscale(generatedImage, '8K');
       onNotify('AI 8K Upscaling Active', 'Latent super-sampling from current resolution to 7680×4320 px (15 Tokens)...', 'info');
       setTimeout(() => {
+        if (res?.upscaledUrl) {
+          setGeneratedImage(res.upscaledUrl);
+        }
         setResolution('8K');
         setIsUpscaling(false);
         onNotify('Upscale Finished', 'Image successfully upscaled to native 8K Ultra-HD!', 'success');

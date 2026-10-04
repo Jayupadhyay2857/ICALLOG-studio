@@ -24,7 +24,7 @@ import {
   FileUp,
   RefreshCw,
 } from 'lucide-react';
-import { triggerFilmScript, triggerFilmDirection } from '../lib/api.ts';
+import { triggerFilmScript, triggerFilmDirection, enhancePrompt } from '../lib/api.ts';
 import { UserProfile } from '../types.ts';
 import { ExplicitStudioToolbar } from './ExplicitStudioToolbar.tsx';
 import { UniversalMediaCaptureToolbar } from './UniversalMediaCaptureToolbar.tsx';
@@ -307,6 +307,25 @@ Access Granted. Master Protocol V18 Initialized.`);
       setGeneratedScript((prev) => `[LANG: ${scriptLanguage.toUpperCase()} - ADAPTED SCREENPLAY]\n\n` + prev);
       onNotify('Translation Complete', `Screenplay adapted & formatted in ${scriptLanguage}!`, 'success');
     }, 1500);
+  };
+
+  // Enhance Logline with Gemini
+  const [isEnhancingLogline, setIsEnhancingLogline] = useState(false);
+  const handleEnhanceLogline = async () => {
+    if (!logline.trim()) return;
+    try {
+      setIsEnhancingLogline(true);
+      onNotify('Enhancing Film Premise', 'Consulting Hollywood screenwriter model...', 'info');
+      const res = await enhancePrompt(logline, 'film');
+      if (res?.enhancedPrompt) {
+        setLogline(res.enhancedPrompt);
+        onNotify('Film Logline Enhanced!', 'Injected dramatic subtext, sluglines, and anamorphic lens cues.', 'success');
+      }
+    } catch {
+      onNotify('Notice', 'Using cinematic script booster.', 'info');
+    } finally {
+      setIsEnhancingLogline(false);
+    }
   };
 
   // Handle Script Generation
@@ -603,7 +622,18 @@ Access Granted. Master Protocol V18 Initialized.`);
 
               {/* Logline */}
               <div>
-                <label className="text-xs text-slate-300 block mb-1 font-semibold">Logline / Core Premise</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-slate-300 font-semibold">Logline / Core Premise</label>
+                  <button
+                    type="button"
+                    disabled={isEnhancingLogline || !logline.trim()}
+                    onClick={handleEnhanceLogline}
+                    className="px-2.5 py-0.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/40 text-[11px] font-bold flex items-center gap-1 transition-all disabled:opacity-50"
+                  >
+                    <Sparkles className={`w-3 h-3 ${isEnhancingLogline ? 'animate-spin' : ''}`} />
+                    <span>{isEnhancingLogline ? 'Enhancing...' : '✨ Enhance AI (बूस्ट करें)'}</span>
+                  </button>
+                </div>
                 <textarea
                   rows={3}
                   value={logline}

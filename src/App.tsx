@@ -40,6 +40,7 @@ import { CookieConsentModal } from './components/CookieConsentModal.tsx';
 import { AutoSaveWarningNotification } from './components/AutoSaveWarningNotification.tsx';
 import { OfflineStatusBanner } from './components/OfflineStatusBanner.tsx';
 import { VoiceNavigationOverlay } from './components/VoiceNavigationOverlay.tsx';
+import { OmniEnhanceModal } from './components/OmniEnhanceModal.tsx';
 import { LanguageProvider } from './context/LanguageContext.tsx';
 import { syncUserState, initOfflineSyncListeners } from './lib/offlineSync.ts';
 import { getUserStateFromIDB } from './lib/offlineIndexedDB.ts';
@@ -105,10 +106,19 @@ export default function App() {
   const [profileInitialTab, setProfileInitialTab] = useState<ProfileTab | undefined>(undefined);
   const [isCookieModalOpen, setIsCookieModalOpen] = useState(false);
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
+  const [isOmniEnhanceOpen, setIsOmniEnhanceOpen] = useState(false);
 
   const handleOpenProfileModal = (tab?: ProfileTab) => {
     setProfileInitialTab(tab);
     setIsProfileModalOpen(true);
+  };
+
+  const handleNavigateFromOmni = (tab: ActiveTab, prefillPrompt?: string) => {
+    setActiveTab(tab);
+    if (prefillPrompt) {
+      localStorage.setItem('icallog_prefill_prompt', prefillPrompt);
+      window.dispatchEvent(new CustomEvent('icallog_apply_prompt', { detail: { prompt: prefillPrompt, tab } }));
+    }
   };
 
   // Toast Notification Dispatcher
@@ -310,6 +320,7 @@ export default function App() {
         openHistoryModal={() => setIsHistoryModalOpen(true)}
         openProfileModal={(tab) => handleOpenProfileModal(tab)}
         openCookieModal={() => handleOpenProfileModal('cookies')}
+        openOmniEnhanceModal={() => setIsOmniEnhanceOpen(true)}
         onSelectSubTab={handleSelectSubTab}
       />
 
@@ -579,6 +590,15 @@ export default function App() {
       <VoiceNavigationOverlay
         onOpenAdminModal={() => setIsAdminModalOpen(true)}
         onNavigateTab={(tab) => handleSelectSubTab(tab, 'docs')}
+      />
+
+      {/* Omni Enhance AI Universal Multi-Modal Prompt Booster Modal */}
+      <OmniEnhanceModal
+        isOpen={isOmniEnhanceOpen}
+        onClose={() => setIsOmniEnhanceOpen(false)}
+        user={user}
+        onNavigateToStudio={handleNavigateFromOmni}
+        onNotify={notify}
       />
 
       {/* Floating Toast Notification Stack */}

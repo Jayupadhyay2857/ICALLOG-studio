@@ -23,7 +23,7 @@ export async function generateMentorResponse(
   const client = getGeminiClient();
 
   if (client) {
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-1.5-flash'];
+    const modelsToTry = ['gemini-3.8-flash', 'gemini-flash-latest'];
     for (const modelName of modelsToTry) {
       try {
         const response = await client.models.generateContent({
@@ -168,21 +168,237 @@ const preset8K = {
   };
 }
 
-export async function enhancePrompt(prompt: string, type: 'image' | 'video'): Promise<string> {
+export type UniversalEnhanceModality =
+  | 'image'
+  | 'video'
+  | 'image_to_image'
+  | 'image_to_video'
+  | 'video_to_image'
+  | 'video_to_video'
+  | 'music'
+  | 'document'
+  | '3d'
+  | 'voice'
+  | 'film'
+  | 'all';
+
+export interface EnhancedPromptResult {
+  enhancedPrompt: string;
+  modality: UniversalEnhanceModality;
+  targetStudio: string;
+  tags: string[];
+  suggestedSettings: Record<string, any>;
+  explanation: string;
+}
+
+export function normalizeModality(type: string): { modality: UniversalEnhanceModality; targetStudio: string } {
+  const t = (type || 'image').toLowerCase().trim();
+  if (t === 'image' || t === 'img' || t === 'photo') {
+    return { modality: 'image', targetStudio: 'image_studio' };
+  }
+  if (t === 'video' || t === 'vid' || t === 'movie') {
+    return { modality: 'video', targetStudio: 'video_audio' };
+  }
+  if (t.includes('image+video') || t.includes('image_to_video') || t.includes('img+vid') || t === 'img2vid') {
+    return { modality: 'image_to_video', targetStudio: 'video_audio' };
+  }
+  if (t.includes('image+image') || t.includes('image_to_image') || t.includes('img+img') || t === 'img2img') {
+    return { modality: 'image_to_image', targetStudio: 'image_studio' };
+  }
+  if (t.includes('video+image') || t.includes('video_to_image') || t.includes('vid+img') || t === 'vid2img') {
+    return { modality: 'video_to_image', targetStudio: 'image_studio' };
+  }
+  if (t.includes('video+video') || t.includes('video_to_video') || t.includes('vid+vid') || t === 'vid2vid') {
+    return { modality: 'video_to_video', targetStudio: 'video_audio' };
+  }
+  if (t === 'music' || t === 'song' || t === 'audio' || t === 'beat' || t === 'lyrics') {
+    return { modality: 'music', targetStudio: 'song_studio' };
+  }
+  if (t === 'document' || t === 'doc' || t === 'docs' || t === 'office' || t === 'ppt' || t === 'report') {
+    return { modality: 'document', targetStudio: 'office_suite' };
+  }
+  if (t === '3d' || t === 'mesh' || t === 'model' || t === 'rig') {
+    return { modality: '3d', targetStudio: '3d_engine' };
+  }
+  if (t === 'voice' || t === 'speech' || t === 'voiceover' || t === 'tts') {
+    return { modality: 'voice', targetStudio: 'voice_converter' };
+  }
+  if (t === 'film' || t === 'screenplay' || t === 'script' || t === 'direction') {
+    return { modality: 'film', targetStudio: 'film_studio' };
+  }
+  return { modality: 'all', targetStudio: 'image_studio' };
+}
+
+export async function enhancePrompt(
+  rawPrompt: string,
+  rawType: string = 'image'
+): Promise<EnhancedPromptResult> {
+  const { modality, targetStudio } = normalizeModality(rawType);
+  const prompt = (rawPrompt || '').trim();
   const client = getGeminiClient();
-  if (client) {
+
+  const modalityDirectives: Record<UniversalEnhanceModality, string> = {
+    image: `Craft a world-class 8K photorealistic image generation prompt. Include: primary subject details, lighting (volumetric, chiaroscuro, golden hour, rim light), camera lens (e.g. 85mm f/1.4, macro), environment textures (raindrops, micro-skin, metallic sheen), composition, and color grading.`,
+    video: `Craft a cinematic text-to-video prompt. Include: camera trajectory (dolly-in, orbital tracking, FPV drone dive), movement dynamics, physical interactions, atmospheric particle effects, lighting shifts, 60fps high temporal coherence, and cinematic pacing.`,
+    image_to_image: `Craft an image-to-image fusion & style transfer prompt. Specify: source geometry and subject feature retention, target art style integration, color palette harmonization, texture blending, and high-frequency detailing.`,
+    image_to_video: `Craft an image-to-video motion animation prompt. Specify: start frame anchor, camera parallax depth shift, fluid physical animations (hair, clothing, wind, water, smoke, wheel spins), velocity ramp, and dynamic environmental transitions.`,
+    video_to_image: `Craft a video-to-image frame extraction & cinematic remaster prompt. Specify: freezing the peak dramatic moment, motion deblurring, HDR color grading, extreme fine textures, and poster-art composition.`,
+    video_to_video: `Craft a video-to-video continuity & scene transition prompt. Specify: matching visual flow between clips, seamless spatial or temporal morphing, color LUT matching, camera momentum preservation, and audio-reactive pacing.`,
+    music: `Craft an AI music & audio production prompt. Specify: musical genre, exact BPM tempo, key signature, instrumentation (Moog analog bass, 808 sub, Fender Stratocaster, orchestral strings, acoustic guitar), vocal style/lyrics theme, and studio mixing vibe (reverb, compression, analog tape warmth).`,
+    document: `Craft an executive professional document prompt. Specify: document title, executive summary, structured numbered sections, business/technical depth, quantitative metrics placeholders, and persuasive professional rhetoric.`,
+    '3d': `Craft a 3D model & mesh synthesis prompt. Specify: clean quad-based topology, polycount budget (e.g. 25k-45k verts), PBR material properties (Albedo, Roughness, Metalness, Normal maps), subsurface scattering, and humanoid bone armature joint alignment.`,
+    voice: `Craft an AI voiceover & vocal synthesis prompt. Specify: vocal timbre (warm baritone, expressive narration, corporate confident), emotional inflection, speaking pace, dramatic pauses, breath markers (<breath>, <pause>), and studio acoustic treatment.`,
+    film: `Craft a Hollywood-level screenplay scene prompt. Specify: scene slugline (INT./EXT.), atmospheric visual action in present tense, character motivations, intense dialogue, sound effect cues, and camera lens angle.`,
+    all: `Craft a universal multi-modal creative prompt that gives a master vision across visual imagery, video motion, 3D spatial design, atmospheric soundtrack, and narrative copy.`,
+  };
+
+  const specificDirective = modalityDirectives[modality] || modalityDirectives.image;
+
+  if (client && prompt) {
     try {
       const response = await client.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: `Enhance this user prompt into a magnificent, hyper-detailed 8K ultra-realistic cinematic prompt for ${type} generation. Return ONLY the enhanced prompt string without explanations:\n\n"${prompt}"`,
+        model: 'gemini-3.8-flash',
+        contents: `You are the master AI Prompt Architect of iCALLOG Creative Studio.
+The user provided this input (which may be in Hindi, Hinglish, or English): "${prompt}".
+Target Tool/Modality: "${modality}".
+
+Instructions:
+${specificDirective}
+- Fluently understand user ideas in Hindi, Hinglish, or English.
+- Return ONLY valid JSON with this structure:
+{
+  "enhancedPrompt": "The hyper-detailed, beautifully written master prompt",
+  "explanation": "1 short sentence explaining the enhancements in friendly language",
+  "tags": ["tag1", "tag2", "tag3"],
+  "suggestedSettings": {
+    "resolution": "8K",
+    "aspectRatio": "16:9",
+    "recommendedTool": "${targetStudio}"
+  }
+}`,
+        config: {
+          responseMimeType: 'application/json',
+        },
       });
-      return response.text?.trim() || prompt;
-    } catch {
-      // Fallback
+
+      const parsed = JSON.parse(response.text || '{}');
+      if (parsed.enhancedPrompt) {
+        return {
+          enhancedPrompt: parsed.enhancedPrompt,
+          modality,
+          targetStudio,
+          tags: Array.isArray(parsed.tags) ? parsed.tags : ['8K', 'Masterpiece', modality],
+          suggestedSettings: parsed.suggestedSettings || { resolution: '8K', aspectRatio: '16:9' },
+          explanation: parsed.explanation || `Optimized for ${modality} generation with cinematic quality.`,
+        };
+      }
+    } catch (err: unknown) {
+      console.warn('Gemini enhancePrompt fallback:', err);
     }
   }
 
-  return `${prompt}, 8k resolution, ultra-photorealistic, volumetric cinematic lighting, octane render, Unreal Engine 5 aesthetic, hyper-detailed textures, 35mm lens, award-winning cinematography, pristine quality`;
+  // Intelligent Fallback for all modalities (offline / static / safe backup)
+  const fallbackBuilders: Record<UniversalEnhanceModality, () => EnhancedPromptResult> = {
+    image: () => ({
+      enhancedPrompt: `${prompt}, 8K Ultra-HD resolution, volumetric cinematic lighting, octane render, Unreal Engine 5 aesthetic, hyper-detailed skin and surface textures, 35mm f/1.4 lens, award-winning cinematography, photorealistic reflections`,
+      modality: 'image',
+      targetStudio: 'image_studio',
+      tags: ['8K', 'Photorealistic', 'OctaneRender', 'Cinematic'],
+      suggestedSettings: { resolution: '8K', aspectRatio: '16:9', steps: 40 },
+      explanation: 'Injected volumetric lighting, 35mm lens depth, and 8K surface textures.',
+    }),
+    video: () => ({
+      enhancedPrompt: `Cinematic high-motion capture: ${prompt}. Dynamic tracking camera with subtle dolly zoom, volumetric haze, atmospheric particle physics, 60 FPS smooth motion blur, ACES Filmic color grade, Hollywood blockbuster cinematography`,
+      modality: 'video',
+      targetStudio: 'video_audio',
+      tags: ['60FPS', 'CinematicMotion', 'DollyZoom', 'ACESFilmic'],
+      suggestedSettings: { resolution: '8K', fps: 60, duration: '15s' },
+      explanation: 'Added camera dolly kinematics, atmospheric particles, and 60fps temporal smoothness.',
+    }),
+    image_to_image: () => ({
+      enhancedPrompt: `High-fidelity neural style transfer & image fusion: Retaining the core anatomical structure and subject silhouette of the base image while applying ${prompt}. Harmonized color balance, seamless edge blending, enhanced PBR surface micro-details, pristine 8K fidelity`,
+      modality: 'image_to_image',
+      targetStudio: 'image_studio',
+      tags: ['StyleTransfer', 'ImageFusion', 'GeometryRetention', 'PBR'],
+      suggestedSettings: { strength: 0.65, resolution: '8K' },
+      explanation: 'Preserves base image geometry while infusing target style and textures.',
+    }),
+    image_to_video: () => ({
+      enhancedPrompt: `Fluid cinematic animation from still frame: ${prompt}. Starting from the keyframe image, initiating smooth parallax camera pan, natural wind dynamics on fabric and hair, ambient environmental lighting shifts, realistic physics simulation, 60fps`,
+      modality: 'image_to_video',
+      targetStudio: 'video_audio',
+      tags: ['ParallaxMotion', 'KeyframeAnimation', 'FluidDynamics'],
+      suggestedSettings: { motionIntensity: 7, duration: '15s', fps: 60 },
+      explanation: 'Anchors the still image with realistic parallax camera movement and physics.',
+    }),
+    video_to_image: () => ({
+      enhancedPrompt: `High-definition cinematic still capture: Isolating the climactic action frame from the video: ${prompt}. Motion deconvolution, crystal clear focal sharpness, 8K remastering, high dynamic range chiaroscuro, poster-art visual depth`,
+      modality: 'video_to_image',
+      targetStudio: 'image_studio',
+      tags: ['FrameIsolation', 'Deconvolution', '8KStill', 'HDR'],
+      suggestedSettings: { resolution: '8K', remasterMode: 'HDR' },
+      explanation: 'Isolates and remasters the key action frame into an 8K cinematic still.',
+    }),
+    video_to_video: () => ({
+      enhancedPrompt: `Seamless video sequence continuity and multi-clip blend: ${prompt}. Matching camera motion vectors, continuous teal-and-amber cinematic color grading, smooth temporal morph transitions, preserved subject velocities, synchronized tempo`,
+      modality: 'video_to_video',
+      targetStudio: 'video_audio',
+      tags: ['VideoSequence', 'MorphTransition', 'ColorLUTMatch'],
+      suggestedSettings: { transition: 'MorphFlow', fps: 60 },
+      explanation: 'Synchronizes camera vectors and color grading for seamless multi-clip continuity.',
+    }),
+    music: () => ({
+      enhancedPrompt: `High-production studio audio track: ${prompt}. 124 BPM, expressive melodic progression, analog Moog sub-bass, atmospheric ambient reverb, crisp layered percussion, modern stereo master, punchy sidechain dynamics`,
+      modality: 'music',
+      targetStudio: 'song_studio',
+      tags: ['124BPM', 'StereoMaster', 'SubBass', 'StudioMix'],
+      suggestedSettings: { bpm: 124, key: 'C Minor', reverb: '0.6' },
+      explanation: 'Added studio arrangement specs, BPM tempo, sub-bass, and stereo mix guidelines.',
+    }),
+    document: () => ({
+      enhancedPrompt: `Comprehensive executive document: ${prompt}. Structured into Executive Summary, Strategic Market Analysis, Core Technical Methodology, Quantitative Impact Projections, and Actionable Recommendations with professional corporate typography`,
+      modality: 'document',
+      targetStudio: 'office_suite',
+      tags: ['ExecutiveDoc', 'StrategicAnalysis', 'ProfessionalFormat'],
+      suggestedSettings: { format: 'Executive_Report', typography: 'Modern_Sans' },
+      explanation: 'Structured into an executive-ready report with professional corporate headers.',
+    }),
+    '3d': () => ({
+      enhancedPrompt: `PBR Game-Ready 3D Asset: ${prompt}. Clean quad-based subdivision topology (35,000 vertices), non-overlapping UV layout, high-frequency normal and displacement maps, calibrated roughness/metallic channels, ready for humanoid skeletal rigging`,
+      modality: '3d',
+      targetStudio: '3d_engine',
+      tags: ['QuadTopology', 'PBRMaterials', 'RigReady', '35kVerts'],
+      suggestedSettings: { polyCount: '35,000', format: 'GLTF_Binary' },
+      explanation: 'Optimized with quad subdivision topology, PBR maps, and bone-rig readiness.',
+    }),
+    voice: () => ({
+      enhancedPrompt: `Professional studio voiceover: ${prompt}. Rich resonant vocal timbre, confident conversational pacing, subtle emotional inflection, natural breath markers (<breath>), recorded on Neumann U87 condenser mic in sound-dampened acoustic booth`,
+      modality: 'voice',
+      targetStudio: 'voice_converter',
+      tags: ['StudioTimbre', 'NeumannMic', 'NaturalPacing', 'AcousticBooth'],
+      suggestedSettings: { voicePreset: 'Zephyr Studio', pitch: 0, denoise: true },
+      explanation: 'Crafted with broadcast mic acoustics, natural breath markers, and vocal timbre.',
+    }),
+    film: () => ({
+      enhancedPrompt: `Hollywood Industry Screenplay Scene: ${prompt}. Industry Courier formatting, dynamic INT./EXT. slugline, gripping present-tense action description, subtext-driven character dialogue, sound effect cues in ALL CAPS, and anamorphic lens direction`,
+      modality: 'film',
+      targetStudio: 'film_studio',
+      tags: ['HollywoodFormat', 'Sluglines', 'AnamorphicLens', 'DramaticSubtext'],
+      suggestedSettings: { aspectRatio: '2.39:1', style: 'Cinematic_Epic' },
+      explanation: 'Formatted into standard Hollywood screenplay scenes with camera and sound cues.',
+    }),
+    all: () => ({
+      enhancedPrompt: `Unified Creative Vision: ${prompt}. 8K Photorealistic visual aesthetic, 60fps dynamic camera motion, 3D quad-topology asset ready, cinematic 124 BPM orchestral-electronic hybrid soundtrack, and Hollywood screenplay documentation`,
+      modality: 'all',
+      targetStudio: 'image_studio',
+      tags: ['OmniCreative', '8KMasterpiece', 'MultiModal'],
+      suggestedSettings: { resolution: '8K', fps: 60, multiModalSync: true },
+      explanation: 'Unified creative vision providing synchronized prompts across all media tools.',
+    }),
+  };
+
+  const builder = fallbackBuilders[modality] || fallbackBuilders.image;
+  return builder();
 }
 
 export async function generateFilmScript(params: {
@@ -213,7 +429,7 @@ Provide:
   if (client) {
     try {
       const response = await client.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.8-flash',
         contents: prompt,
       });
       const screenplay = response.text || '';
@@ -333,7 +549,7 @@ Please return a detailed JSON object with this exact structure:
   if (client) {
     try {
       const response = await client.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.8-flash',
         contents: prompt,
         config: {
           responseMimeType: 'application/json',
@@ -394,3 +610,292 @@ Please return a detailed JSON object with this exact structure:
     ],
   };
 }
+
+export async function generateAiImage(params: {
+  prompt: string;
+  style?: string;
+  resolution?: string;
+  aspectRatio?: string;
+}): Promise<{ imageUrl: string; prompt: string; source: string }> {
+  const { prompt, style = 'Cyberpunk', resolution = '8K', aspectRatio = '16:9' } = params;
+  const client = getGeminiClient();
+
+  const styledPrompt = `${prompt}, ${style} style, ultra-detailed 8K masterpiece, masterpiece lighting, sharp focus, pristine rendering`;
+
+  // 1. Try Gemini Image model if available
+  if (client) {
+    try {
+      const response = await client.models.generateContent({
+        model: 'gemini-3.1-flash-lite-image',
+        contents: {
+          parts: [{ text: styledPrompt }],
+        },
+      });
+
+      const candidate = response.candidates?.[0];
+      const imagePart = candidate?.content?.parts?.find((p) => p.inlineData?.data);
+      if (imagePart && imagePart.inlineData?.data) {
+        const mimeType = imagePart.inlineData.mimeType || 'image/png';
+        const dataUrl = `data:${mimeType};base64,${imagePart.inlineData.data}`;
+        return {
+          imageUrl: dataUrl,
+          prompt,
+          source: 'gemini-3.1-flash-lite-image',
+        };
+      }
+    } catch (err: unknown) {
+      console.warn('Gemini 3.1 image generation quota or error, falling back to neural Flux engine:', err);
+    }
+  }
+
+  // 2. High-Fidelity Prompt-Accurate Neural Flux Diffusion Engine
+  let width = 1024;
+  let height = 1024;
+  if (aspectRatio === '16:9') {
+    width = 1280;
+    height = 720;
+  } else if (aspectRatio === '9:16') {
+    width = 720;
+    height = 1280;
+  } else if (aspectRatio === '4:3') {
+    width = 1024;
+    height = 768;
+  } else if (aspectRatio === '21:9') {
+    width = 1344;
+    height = 576;
+  }
+
+  const randomSeed = Math.floor(Math.random() * 9999999);
+  const cleanPrompt = encodeURIComponent(styledPrompt.slice(0, 300));
+  const neuralUrl = `https://image.pollinations.ai/prompt/${cleanPrompt}?width=${width}&height=${height}&seed=${randomSeed}&nologo=true&model=flux`;
+
+  return {
+    imageUrl: neuralUrl,
+    prompt,
+    source: 'flux-neural-diffusion',
+  };
+}
+
+export async function generateAiDocument(params: {
+  topic: string;
+  format?: string;
+  language?: string;
+}): Promise<{
+  title: string;
+  content: string;
+  sections: string[];
+  summary: string;
+}> {
+  const { topic, format = 'Executive Report', language = 'English/Hindi' } = params;
+  const client = getGeminiClient();
+
+  const prompt = `You are an elite Executive Document Architect & Business Strategist for iCALLOG Office Suite.
+Write a comprehensive, publication-grade professional document on the topic: "${topic}".
+Target Format: ${format}.
+Language requirement: If user query was in Hindi or Hinglish, provide a professional bilingual or clearly phrased Hindi/English output, otherwise polished executive English.
+
+Structure requirement:
+1. DOCUMENT TITLE (# Header)
+2. EXECUTIVE SUMMARY (## Header & 2-3 concise paragraphs)
+3. STRATEGIC CONTEXT & PROBLEM STATEMENT (## Header & bullet points)
+4. CORE ARCHITECTURE / METHODOLOGY / ACTION PLAN (## Header & detailed sections)
+5. FINANCIAL, RESOURCE & ROI BREAKDOWN (## Header & formatted table/breakdown)
+6. TIMELINE & MILESTONES (## Header & numbered phases)
+7. RISK MITIGATION & COMPLIANCE (## Header)
+8. CONCLUSION & NEXT STEPS (## Header)
+
+Format with clean Markdown. Be thorough, detailed, and directly applicable.`;
+
+  if (client) {
+    try {
+      const response = await client.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: prompt,
+      });
+      const content = response.text || '';
+      const titleMatch = content.match(/^#\s+(.+)$/m);
+      const title = titleMatch ? titleMatch[1].trim() : `${topic.slice(0, 50)} - Executive Proposal`;
+      const sections = Array.from(content.matchAll(/^##\s+(.+)$/gm)).map((m) => m[1].trim());
+
+      return {
+        title,
+        content,
+        sections: sections.length > 0 ? sections : ['Executive Summary', 'Core Strategy', 'Action Plan', 'Conclusion'],
+        summary: `Complete ${format} generated with structured sections and executive analysis.`,
+      };
+    } catch (err) {
+      console.warn('Gemini document generation fallback:', err);
+    }
+  }
+
+  // Fallback high quality document template
+  const fallbackTitle = `EXECUTIVE STRATEGY REPORT: ${topic.toUpperCase().slice(0, 60)}`;
+  const fallbackContent = `# ${fallbackTitle}
+
+## 1. EXECUTIVE SUMMARY
+This document outlines the strategic roadmap, architectural framework, and implementation pipeline for **${topic}**. Designed for iCALLOG Executive Suite, this blueprint addresses market viability, technological integration, resource allocation, and anticipated ROI.
+
+## 2. PROBLEM STATEMENT & MARKET OPPORTUNITY
+- **Market Dynamics:** Rapid shifts require automated AI workflows and real-time execution.
+- **Identified Gap:** Traditional production pipelines suffer from latency and high fragmentation across media tools.
+- **Strategic Advantage:** Unifying generative synthesis with scalable micro-service orchestration delivers 10x throughput.
+
+## 3. CORE ARCHITECTURAL SPECIFICATION
+1. **Intelligent Ingestion:** Natural language processing across multilingual inputs (Hindi, Hinglish, English).
+2. **Dynamic Modality Dispatch:** Direct routing to 8K Image, 60fps Video, 3D WebGL, and Audio engines.
+3. **PBR Real-Time Calibrations:** Vertex shader bone transformations and low-latency audio synthesis.
+
+## 4. FINANCIAL PROJECTIONS & RESOURCE ALLOCATION
+| Phase | Milestone Objective | Estimated Budget | Projected Timeline |
+|---|---|---|---|
+| Phase 1 | Foundation & Core Engine Setup | ₹15,00,000 | Weeks 1–4 |
+| Phase 2 | Generative AI Integration & Rigging | ₹28,00,000 | Weeks 5–10 |
+| Phase 3 | Multi-Modal Scaling & Deployment | ₹22,00,000 | Weeks 11–16 |
+
+## 5. RISK MANAGEMENT & COMPLIANCE
+- **Data Privacy:** Strict zero-retention on sensitive enterprise records.
+- **Model Governance:** Real-time quota management with automatic fallback balancing.
+- **SLA Commitment:** 99.9% uptime across distributed inference nodes.
+
+## 6. CONCLUSION & IMMEDIATE NEXT STEPS
+Immediate execution is recommended to capitalize on the first-mover advantage within this vertical. Stakeholders are advised to approve Phase 1 allocation upon review of this memorandum.`;
+
+  return {
+    title: fallbackTitle,
+    content: fallbackContent,
+    sections: ['Executive Summary', 'Problem Statement', 'Core Architecture', 'Financial Projections', 'Risk Management', 'Conclusion'],
+    summary: 'Executive strategy report generated with standard corporate formatting.',
+  };
+}
+
+export async function generateAiSongLyrics(params: {
+  topic: string;
+  genre?: string;
+  language?: string;
+  tempoBpm?: number;
+}): Promise<{
+  title: string;
+  lyrics: string;
+  genre: string;
+  tempoBpm: number;
+  musicalKey: string;
+  arrangementNotes: string;
+}> {
+  const { topic, genre = 'Bollywood / High-Beat Pop', language = 'Hindi / Hinglish', tempoBpm = 124 } = params;
+  const client = getGeminiClient();
+
+  const prompt = `You are a master Music Director, Lyricist & Studio Producer for iCALLOG Music Studio.
+Compose a complete, radio-ready song based on this topic/idea: "${topic}".
+Musical Genre: ${genre}
+Language: ${language} (If Hindi/Hinglish requested, write authentic poetic and catchy lyrics with Latin Roman script / Devanagari mix)
+Tempo: ${tempoBpm} BPM
+
+Format output strictly as:
+TITLE: [Song Title]
+MUSICAL KEY: [e.g. C Minor / A Minor]
+TEMPO: ${tempoBpm} BPM
+ARRANGEMENT NOTES: [Instrumentation, sub-bass, drum beat, vibe]
+
+[Verse 1]
+[Lyrics]
+
+[Pre-Chorus]
+[Lyrics]
+
+[Chorus] (The catchy high-energy hook)
+[Lyrics]
+
+[Verse 2]
+[Lyrics]
+
+[Bridge]
+[Lyrics]
+
+[Chorus]
+[Lyrics]
+
+[Outro]
+[Lyrics]`;
+
+  if (client) {
+    try {
+      const response = await client.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: prompt,
+      });
+      const lyricsText = response.text || '';
+      const titleMatch = lyricsText.match(/^TITLE:\s*(.+)$/im);
+      const title = titleMatch ? titleMatch[1].trim() : `${topic.slice(0, 40)} - Studio Mix`;
+      const keyMatch = lyricsText.match(/MUSICAL KEY:\s*(.+)$/im);
+      const musicalKey = keyMatch ? keyMatch[1].trim() : 'C Minor';
+      const notesMatch = lyricsText.match(/ARRANGEMENT NOTES:\s*([^\n]+)/im);
+      const arrangementNotes = notesMatch ? notesMatch[1].trim() : 'Analog Moog bass, 808 kick, layered synths, wide stereo chorus';
+
+      return {
+        title,
+        lyrics: lyricsText,
+        genre,
+        tempoBpm,
+        musicalKey,
+        arrangementNotes,
+      };
+    } catch (err) {
+      console.warn('Gemini song lyrics generation fallback:', err);
+    }
+  }
+
+  // Fallback poetic song arrangement
+  const fallbackLyrics = `TITLE: ${topic.slice(0, 30).toUpperCase()} (Studio Mix)
+MUSICAL KEY: D Minor
+TEMPO: ${tempoBpm} BPM
+ARRANGEMENT NOTES: Punchy 808 sub-bass, modern dholak syncopation, ambient pads, crisp vocal autotune
+
+[Verse 1]
+Dheere dheere chal rahi hai ye hawayein
+Dil ke kone se uthi hain ye duayein
+Raat ke andhere mein chamak raha hai noor
+Tere bina har ek lamha lag raha fitoor
+
+[Pre-Chorus]
+Dharkanon ki taan pe ye saans tham gayi
+Teri meri dastaan zameen pe jam gayi
+Ab rukna nahi, ab jhukna nahi
+Sangeet ki lehar mein behna hai
+
+[Chorus]
+Aao milke jhoomein is sangeet ke saath
+Haathon mein tham ke ek doosre ka haath
+Yehi hai zindagani, yehi hai fasana
+Dil ki har dharkan ko bas khushi se gaana!
+
+[Verse 2]
+Sitaron ki roshni mein khoya hai jahaan
+Dhoond raha tha dil apna aashiyan
+Aaj mili manzil, aaj mila sahil
+Surili dhunon se ho gaya sab kabil
+
+[Bridge]
+Bass drop hoga ab, ground shakers chalenge
+Har ek kone mein neon lights jalenge
+Hold the rhythm tight, feel the groove tonight!
+
+[Chorus]
+Aao milke jhoomein is sangeet ke saath
+Haathon mein tham ke ek doosre ka haath
+Yehi hai zindagani, yehi hai fasana
+Dil ki har dharkan ko bas khushi se gaana!
+
+[Outro]
+Fading echo on the beat...
+Dil ki har dharkan... khushi se gaana...`;
+
+  return {
+    title: `${topic.slice(0, 30)} (Studio Master)`,
+    lyrics: fallbackLyrics,
+    genre,
+    tempoBpm,
+    musicalKey: 'D Minor',
+    arrangementNotes: 'Punchy 808 sub-bass, modern dholak syncopation, ambient pads, crisp vocal autotune',
+  };
+}
+

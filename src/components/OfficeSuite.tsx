@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { UserProfile } from '../types.ts';
 import { UniversalMediaCaptureToolbar } from './UniversalMediaCaptureToolbar.tsx';
+import { enhancePrompt, generateAiDocument } from '../lib/api.ts';
 
 interface OfficeSuiteProps {
   user?: UserProfile;
@@ -203,10 +204,54 @@ export const OfficeSuite: React.FC<OfficeSuiteProps> = ({
   const [docTitle, setDocTitle] = useState('Film Production Agreement & Proposal');
   const [docContent, setDocContent] = useState(DOC_TEMPLATES[0].content);
   const [isCopiedDoc, setIsCopiedDoc] = useState(false);
+  const [aiDocTopic, setAiDocTopic] = useState('');
+  const [isEnhancingDoc, setIsEnhancingDoc] = useState(false);
+  const [isGeneratingDoc, setIsGeneratingDoc] = useState(false);
 
   const wordCount = docContent.trim().split(/\s+/).filter(Boolean).length;
   const charCount = docContent.length;
   const readingTime = Math.ceil(wordCount / 200);
+
+  // Enhance Doc Prompt with Gemini
+  const handleEnhanceDocPrompt = async () => {
+    if (!aiDocTopic.trim()) return;
+    try {
+      setIsEnhancingDoc(true);
+      onNotify('Enhancing Document Topic', 'Adding executive structure, ROI metrics, and legal milestones...', 'info');
+      const res = await enhancePrompt(aiDocTopic, 'document');
+      if (res?.enhancedPrompt) {
+        setAiDocTopic(res.enhancedPrompt);
+        onNotify('Document Prompt Enhanced!', 'Injected executive summary, methodology, and ROI breakdown framework.', 'success');
+      }
+    } catch {
+      onNotify('Notice', 'Using executive document prompt booster.', 'info');
+    } finally {
+      setIsEnhancingDoc(false);
+    }
+  };
+
+  // Generate Complete Document with Gemini
+  const handleGenerateAiDoc = async (overrideTopic?: string) => {
+    const topicToUse = overrideTopic || aiDocTopic;
+    if (!topicToUse.trim()) {
+      onNotify('Notice', 'Please type a document topic or idea first!', 'warning');
+      return;
+    }
+    try {
+      setIsGeneratingDoc(true);
+      onNotify('Generating Document...', `Drafting comprehensive executive report for: "${topicToUse.slice(0, 35)}..."`, 'info');
+      const res = await generateAiDocument({ topic: topicToUse, format: 'Executive Strategy Report' });
+      if (res?.content) {
+        setDocTitle(res.title || 'AI Generated Executive Document');
+        setDocContent(res.content);
+        onNotify('Document Ready!', 'Generated full document with structured headers and table analysis.', 'success');
+      }
+    } catch {
+      onNotify('Notice', 'Prepared standard executive template.', 'info');
+    } finally {
+      setIsGeneratingDoc(false);
+    }
+  };
 
   const handleDownloadDoc = (format: 'txt' | 'doc' | 'md') => {
     let mime = 'text/plain';
@@ -419,6 +464,80 @@ export const OfficeSuite: React.FC<OfficeSuiteProps> = ({
         <div className="space-y-4">
           {/* Header Controls & Template Selector */}
           <div className="p-4 rounded-3xl bg-slate-900/70 border border-slate-800 space-y-3">
+            {/* AI Document Prompt & Enhance Generator */}
+            <div className="p-3.5 rounded-2xl bg-slate-950 border border-cyan-500/40 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>AI Executive Document Architect (कोई भी विषय लिखें और पूरा डॉक बनाएं)</span>
+                </label>
+                <span className="text-[10px] font-mono text-cyan-400">Gemini 3.8 Flash Engine</span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={aiDocTopic}
+                  onChange={(e) => setAiDocTopic(e.target.value)}
+                  placeholder="e.g. AI startup business proposal, Freelance software developer contract, Marketing plan..."
+                  className="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+                />
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={isEnhancingDoc || !aiDocTopic.trim()}
+                    onClick={handleEnhanceDocPrompt}
+                    className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-bold transition-all flex items-center gap-1.5 border border-slate-700 disabled:opacity-50"
+                  >
+                    <Sparkles className={`w-3.5 h-3.5 ${isEnhancingDoc ? 'animate-spin' : ''}`} />
+                    <span>{isEnhancingDoc ? 'Boosting...' : '✨ Enhance AI (बूस्ट करें)'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isGeneratingDoc || !aiDocTopic.trim()}
+                    onClick={() => handleGenerateAiDoc()}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 via-indigo-600 to-purple-600 hover:from-cyan-500 hover:to-indigo-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-md disabled:opacity-50"
+                  >
+                    {isGeneratingDoc ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Generating...</span>
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>Generate Doc</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick Topic Chips */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[10px] text-slate-400 font-mono">Quick Topics:</span>
+                {[
+                  { label: '🚀 AI Startup Pitch Deck', topic: 'Comprehensive pitch deck for an AI creative studio' },
+                  { label: '💼 Client Master Service Agreement', topic: 'Professional master services contract and statement of work' },
+                  { label: '📊 5-Year Financial & Growth Model', topic: 'Strategic 5-year financial projections and unit economics' },
+                ].map((item, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setAiDocTopic(item.topic);
+                      handleGenerateAiDoc(item.topic);
+                    }}
+                    className="px-2 py-0.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] text-slate-300 hover:text-cyan-300 transition-colors"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex-1 w-full sm:w-auto">
                 <label className="text-[11px] font-mono text-slate-400 block mb-1">DOCUMENT TITLE</label>

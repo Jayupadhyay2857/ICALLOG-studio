@@ -221,6 +221,59 @@ export const VideoAudioSuite: React.FC<VideoAudioSuiteProps> = ({
     { note: 'C4', step: 14, active: true },
   ]);
 
+  // Video AI Prompt Enhancers
+  const [isEnhancingVideo, setIsEnhancingVideo] = useState(false);
+  const handleEnhanceVideoPrompt = async () => {
+    if (!videoPrompt.trim()) return;
+    try {
+      setIsEnhancingVideo(true);
+      onNotify('Enhancing Video Prompt', 'Consulting Gemini for cinematic 60fps prompt...', 'info');
+      const res = await enhancePrompt(videoPrompt, 'video');
+      if (res?.enhancedPrompt) {
+        setVideoPrompt(res.enhancedPrompt);
+        onNotify('Video Prompt Enhanced!', 'Added cinematic dolly kinematics, atmospheric particles, and 60fps lighting.', 'success');
+      }
+    } catch {
+      onNotify('Notice', 'Using high-speed video prompt booster.', 'info');
+    } finally {
+      setIsEnhancingVideo(false);
+    }
+  };
+
+  const [isEnhancingImg2Vid, setIsEnhancingImg2Vid] = useState(false);
+  const handleEnhanceImg2Vid = async () => {
+    if (!img2vidPrompt.trim()) return;
+    try {
+      setIsEnhancingImg2Vid(true);
+      const res = await enhancePrompt(img2vidPrompt, 'image_to_video');
+      if (res?.enhancedPrompt) {
+        setImg2vidPrompt(res.enhancedPrompt);
+        onNotify('Image+Video Prompt Enhanced!', 'Added parallax depth and fluid dynamics.', 'success');
+      }
+    } catch {
+      onNotify('Notice', 'Using motion prompt booster.', 'info');
+    } finally {
+      setIsEnhancingImg2Vid(false);
+    }
+  };
+
+  const [isEnhancingMultiVideo, setIsEnhancingMultiVideo] = useState(false);
+  const handleEnhanceMultiVideo = async () => {
+    if (!videoPrompt.trim()) return;
+    try {
+      setIsEnhancingMultiVideo(true);
+      const res = await enhancePrompt(videoPrompt, 'video_to_video');
+      if (res?.enhancedPrompt) {
+        setVideoPrompt(res.enhancedPrompt);
+        onNotify('Multi-Video Prompt Enhanced!', 'Added transition continuity and LUT matching.', 'success');
+      }
+    } catch {
+      onNotify('Notice', 'Using multi-video booster.', 'info');
+    } finally {
+      setIsEnhancingMultiVideo(false);
+    }
+  };
+
   // Handle Video Generation Trigger (240p to 8K)
   const handleGenerateVideo = async () => {
     if (!isPremium && !selectedDuration.isFreeAllowed) {
@@ -558,7 +611,18 @@ export const VideoAudioSuite: React.FC<VideoAudioSuiteProps> = ({
               </h3>
 
               <div>
-                <label className="text-xs text-slate-300 block mb-1">Cinematic Video Prompt</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-slate-300 font-semibold">Cinematic Video Prompt</label>
+                  <button
+                    type="button"
+                    disabled={isEnhancingVideo || !videoPrompt.trim()}
+                    onClick={handleEnhanceVideoPrompt}
+                    className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white text-[11px] font-bold flex items-center gap-1 transition-all disabled:opacity-50 shadow-sm"
+                  >
+                    <Sparkles className={`w-3 h-3 ${isEnhancingVideo ? 'animate-spin' : ''}`} />
+                    <span>{isEnhancingVideo ? 'Enhancing...' : '✨ Enhance AI (बूस्ट करें)'}</span>
+                  </button>
+                </div>
                 <textarea
                   rows={4}
                   value={videoPrompt}
@@ -1024,9 +1088,20 @@ export const VideoAudioSuite: React.FC<VideoAudioSuiteProps> = ({
 
               {/* AI Command Textarea */}
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-300 block">
-                  AI Multi-Video Command / Prompt
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-300">
+                    AI Multi-Video Command / Prompt
+                  </label>
+                  <button
+                    type="button"
+                    disabled={isEnhancingMultiVideo || !videoPrompt.trim()}
+                    onClick={handleEnhanceMultiVideo}
+                    className="px-2 py-0.5 rounded-lg bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white text-[11px] font-bold flex items-center gap-1 transition-all disabled:opacity-50"
+                  >
+                    <Sparkles className={`w-3 h-3 ${isEnhancingMultiVideo ? 'animate-spin' : ''}`} />
+                    <span>{isEnhancingMultiVideo ? 'Enhancing...' : '✨ Enhance AI'}</span>
+                  </button>
+                </div>
                 <textarea
                   rows={3}
                   value={videoPrompt}
@@ -1175,7 +1250,18 @@ export const VideoAudioSuite: React.FC<VideoAudioSuiteProps> = ({
 
                 {/* Motion Description Prompt */}
                 <div>
-                  <label className="text-xs text-slate-300 block mb-1 font-semibold">Atmospheric Animation Prompt</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs text-slate-300 font-semibold">Atmospheric Animation Prompt</label>
+                    <button
+                      type="button"
+                      disabled={isEnhancingImg2Vid || !img2vidPrompt.trim()}
+                      onClick={handleEnhanceImg2Vid}
+                      className="px-2 py-0.5 rounded-lg bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-[11px] font-bold flex items-center gap-1 transition-all disabled:opacity-50"
+                    >
+                      <Sparkles className={`w-3 h-3 ${isEnhancingImg2Vid ? 'animate-spin' : ''}`} />
+                      <span>{isEnhancingImg2Vid ? 'Enhancing...' : '✨ Enhance AI'}</span>
+                    </button>
+                  </div>
                   <textarea
                     rows={2}
                     value={img2vidPrompt}

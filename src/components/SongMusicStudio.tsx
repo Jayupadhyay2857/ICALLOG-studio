@@ -25,6 +25,7 @@ import {
   Crown,
 } from 'lucide-react';
 import { UserProfile } from '../types.ts';
+import { enhancePrompt } from '../lib/api.ts';
 import {
   CustomMusicTheme,
   PRESET_MUSIC_THEMES,
@@ -265,6 +266,26 @@ export const SongMusicStudio: React.FC<SongMusicStudioProps> = ({
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
+    }
+  };
+
+  // Enhance Music Prompt with Gemini
+  const [isEnhancingMusic, setIsEnhancingMusic] = useState(false);
+  const handleEnhanceMusicPrompt = async () => {
+    const raw = lyricTopic || lyricsText || selectedGenre.name;
+    if (!raw.trim()) return;
+    try {
+      setIsEnhancingMusic(true);
+      onNotify('Enhancing Music Prompt', 'Consulting Gemini for studio arrangement & BPM...', 'info');
+      const res = await enhancePrompt(raw, 'music');
+      if (res?.enhancedPrompt) {
+        setLyricTopic(res.enhancedPrompt);
+        onNotify('Music Prompt Enhanced!', 'Added 124 BPM tempo, Moog sub-bass, and studio mix instructions.', 'success');
+      }
+    } catch {
+      onNotify('Notice', 'Using studio music prompt booster.', 'info');
+    } finally {
+      setIsEnhancingMusic(false);
     }
   };
 
@@ -715,6 +736,15 @@ export const SongMusicStudio: React.FC<SongMusicStudioProps> = ({
                     placeholder="e.g. Romantic night under stars, Sad breakup feeling, High energy party beat..."
                     className="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white focus:border-purple-500 focus:outline-none"
                   />
+                  <button
+                    type="button"
+                    disabled={isEnhancingMusic || !lyricTopic.trim()}
+                    onClick={handleEnhanceMusicPrompt}
+                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 shadow-md disabled:opacity-50"
+                  >
+                    <Sparkles className={`w-3.5 h-3.5 ${isEnhancingMusic ? 'animate-spin' : 'text-cyan-300'}`} />
+                    <span>{isEnhancingMusic ? 'Boosting...' : '✨ Enhance AI'}</span>
+                  </button>
                   <button
                     type="button"
                     disabled={isGeneratingLyrics}

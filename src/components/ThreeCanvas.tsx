@@ -23,7 +23,7 @@ import {
   Clapperboard,
   Plus,
 } from 'lucide-react';
-import { triggerAutoRig, triggerImageTo3D, trigger3DToVideo } from '../lib/api.ts';
+import { triggerAutoRig, triggerImageTo3D, trigger3DToVideo, enhancePrompt } from '../lib/api.ts';
 import { ResolutionTier, RESOLUTION_SPECTRUM } from './ImageStudio.tsx';
 import { UserProfile } from '../types.ts';
 import { ExplicitStudioToolbar } from './ExplicitStudioToolbar.tsx';
@@ -67,6 +67,17 @@ const THREE_RESOLUTIONS: ThreeResolutionConfig[] = [
   { id: '8K', label: '8K Super-Sampling', pixelRatio: 2.75, badge: '8K SSAA', description: 'Maximum extreme 8K SSAA anti-aliasing' },
 ];
 
+interface HoveredObjectInfo {
+  x: number;
+  y: number;
+  title: string;
+  category: string;
+  icon: string;
+  functionDesc: string;
+  specs: string;
+  color?: string;
+}
+
 export const ThreeCanvas: React.FC<ThreeCanvasProps> = ({
   user,
   openPaymentModal,
@@ -81,6 +92,12 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = ({
   const characterGroupRef = useRef<THREE.Group | null>(null);
   const skinnedMeshRef = useRef<THREE.SkinnedMesh | null>(null);
   const materialsRef = useRef<{ bodyMat?: THREE.MeshStandardMaterial; visorMat?: THREE.MeshStandardMaterial; accentMat?: THREE.MeshStandardMaterial }>({});
+  
+  // Interactive 3D Objects & Raycasting Hover Tooltips
+  const interactiveObjectsRef = useRef<THREE.Object3D[]>([]);
+  const raycasterRef = useRef<THREE.Raycaster>(new THREE.Raycaster());
+  const mouseVecRef = useRef<THREE.Vector2>(new THREE.Vector2());
+  const [hoveredObject, setHoveredObject] = useState<HoveredObjectInfo | null>(null);
 
   // Explicit & Unrestricted Studio Mode
   const [selectedExplicitGenre, setSelectedExplicitGenre] = useState<string>('cinematic_hyperrealism');
@@ -131,6 +148,23 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = ({
         'success'
       );
     }, 1500);
+  };
+
+  const [isEnhancing3D, setIsEnhancing3D] = useState(false);
+  const handleEnhance3DPrompt = async () => {
+    if (!text3dPrompt.trim()) return;
+    try {
+      setIsEnhancing3D(true);
+      const res = await enhancePrompt(text3dPrompt, '3d');
+      if (res?.enhancedPrompt) {
+        setText3dPrompt(res.enhancedPrompt);
+        onNotify('3D Prompt Enhanced!', 'Injected quad topology and PBR material directives.', 'success');
+      }
+    } catch {
+      onNotify('Notice', 'Using high-frequency 3D prompt modifier.', 'info');
+    } finally {
+      setIsEnhancing3D(false);
+    }
   };
 
   // Image to 3D State
@@ -210,6 +244,15 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = ({
     // Grid Floor & Cyber Platform
     const grid = new THREE.GridHelper(12, 24, 0x6366f1, 0x1e293b);
     grid.position.y = -0.01;
+    grid.userData = {
+      isInteractive: true,
+      title: 'Spatial Holographic Grid',
+      category: 'Coordinate System',
+      icon: '📐',
+      functionDesc: '12×12 meter metric coordinate plane providing real-time spatial depth reference, ground alignment, and sub-pixel scale calibration within the ICALLOG environment.',
+      specs: '12m × 12m Matrix • 24 Division Matrix • PBR Grid',
+      color: '#818cf8',
+    };
     scene.add(grid);
 
     const platformGeo = new THREE.CylinderGeometry(1.8, 2.0, 0.2, 32);
@@ -221,6 +264,15 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = ({
     const platform = new THREE.Mesh(platformGeo, platformMat);
     platform.position.y = -0.1;
     platform.receiveShadow = true;
+    platform.userData = {
+      isInteractive: true,
+      title: 'Cyber Staging Pedestal',
+      category: 'Stage Foundation',
+      icon: '🏛️',
+      functionDesc: 'Primary physical foundation in the ICALLOG environment. Stabilizes 3D humanoid rigs, calculates ground-contact physics, and provides inverse kinematics (IK) foot alignment.',
+      specs: 'ACES Filmic PBR • Metalness 0.8 • Shadow Receiver',
+      color: '#6366f1',
+    };
     scene.add(platform);
 
     // Glowing Neon Ring on platform
@@ -233,7 +285,54 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = ({
     const ring = new THREE.Mesh(ringGeo, ringMat);
     ring.rotation.x = Math.PI / 2;
     ring.position.y = 0.01;
+    ring.userData = {
+      isInteractive: true,
+      title: 'Emissive Stator Ring',
+      category: 'Boundary Field',
+      icon: '💫',
+      functionDesc: 'High-frequency luminescent field generator defining the active choreography zone, avatar rotation perimeter, and safe kinematic boundary in the 3D studio.',
+      specs: 'Torus Mesh • Bloom Emissive: 1.0 • 1.6m Radius',
+      color: '#06b6d4',
+    };
     scene.add(ring);
+
+    // Floating Quantum Audio Visualizer Node
+    const audioOrbGeo = new THREE.IcosahedronGeometry(0.12, 1);
+    const audioOrbMat = new THREE.MeshStandardMaterial({
+      color: 0x8b5cf6,
+      emissive: 0x8b5cf6,
+      emissiveIntensity: 0.9,
+      wireframe: true,
+    });
+    const audioOrb = new THREE.Mesh(audioOrbGeo, audioOrbMat);
+    audioOrb.position.set(1.4, 1.2, -0.6);
+    audioOrb.userData = {
+      isInteractive: true,
+      title: 'Sonic Audio-Motion Node',
+      category: 'Music Synthesizer Sync',
+      icon: '🎵',
+      functionDesc: 'Real-time BPM frequency analyzer in ICALLOG. Coordinates arm gesture velocities, step cadence, and body sways with active musical tracks and Web Speech commands.',
+      specs: 'Wireframe Icosahedron • BPM Harmonic Synthesizer • Emissive 0.9',
+      color: '#8b5cf6',
+    };
+    scene.add(audioOrb);
+
+    // Floating Photon Key Light Marker
+    const lightFocusGeo = new THREE.TorusGeometry(0.15, 0.02, 16, 32);
+    const lightFocusMat = new THREE.MeshBasicMaterial({ color: 0x6366f1 });
+    const lightFocus = new THREE.Mesh(lightFocusGeo, lightFocusMat);
+    lightFocus.position.set(3.0, 4.5, 3.0);
+    lightFocus.lookAt(0, 1.2, 0);
+    lightFocus.userData = {
+      isInteractive: true,
+      title: 'Photon Key Light Rig',
+      category: 'Studio Lighting',
+      icon: '☀️',
+      functionDesc: 'Primary directional photon emitter casting 1024×1024 PCF soft shadows, volumetric haze, and ACES Filmic chiaroscuro highlights on character meshes.',
+      specs: 'DirectionalLight 2.5 • PCF Shadow Map • 1024² Buffer',
+      color: '#6366f1',
+    };
+    scene.add(lightFocus);
 
     // 2. Character Model & Armature Construction
     const characterGroup = new THREE.Group();
@@ -414,6 +513,15 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = ({
     skinnedMesh.bind(skeleton);
     skinnedMesh.castShadow = true;
     skinnedMesh.receiveShadow = true;
+    skinnedMesh.userData = {
+      isInteractive: true,
+      title: 'Skinned Cyber-Armature Mesh',
+      category: 'Humanoid Core Rig',
+      icon: '🦾',
+      functionDesc: '54-vertex deformable cybernetic mesh bound to a 17-bone hierarchical skeleton. Drives real-time vertex skinning, bone weights, and dance kinematics across all custom and preset emotes.',
+      specs: '17 Humanoid Bones • Dynamic Skin Weights • Dual PBR Shading',
+      color: armorColor,
+    };
     skinnedMeshRef.current = skinnedMesh;
     characterGroup.add(skinnedMesh);
 
@@ -429,17 +537,79 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = ({
     const visorMesh = new THREE.Mesh(headGeo, visorMat);
     visorMesh.position.set(0, 0.05, 0.08);
     visorMesh.scale.set(0.9, 0.8, 0.9);
+    visorMesh.userData = {
+      isInteractive: true,
+      title: 'Neural Visor HUD Sensor',
+      category: 'Head Subsystem',
+      icon: '👁️',
+      functionDesc: 'Optical sensor node and emissive telemetry focal point. Tracks avatar gaze vectors, head orientation angles, and camera target locks within the 3D scene.',
+      specs: 'Sphere Mesh • Cyan Bloom Emissive 0.8 • Head Bone Bound',
+      color: glowColor,
+    };
     headBone.add(visorMesh);
 
     // Shoulder Armor Thrusters
     const shoulderGeo = new THREE.BoxGeometry(0.2, 0.15, 0.25);
     const lThruster = new THREE.Mesh(shoulderGeo, material);
     lThruster.position.set(0.15, 0.05, 0);
+    lThruster.userData = {
+      isInteractive: true,
+      title: 'Port Shoulder Vernier Pod',
+      category: 'Stabilization Thruster',
+      icon: '🚀',
+      functionDesc: 'Hard-surface mechanical micro-thruster providing lateral stabilization and angular counter-torque during rapid floss, taunt, and breakdance rotations.',
+      specs: 'Clavicle Bound • Vector Stabilization • Dynamic Shading',
+      color: '#38bdf8',
+    };
     lShoulder.add(lThruster);
 
     const rThruster = new THREE.Mesh(shoulderGeo, material);
     rThruster.position.set(-0.15, 0.05, 0);
+    rThruster.userData = {
+      isInteractive: true,
+      title: 'Starboard Shoulder Vernier Pod',
+      category: 'Stabilization Thruster',
+      icon: '🚀',
+      functionDesc: 'Right shoulder reaction control thruster balancing centrifugal force and dynamic momentum during acrobatic aerial and martial arts choreography.',
+      specs: 'Clavicle Bound • Vector Stabilization • Dynamic Shading',
+      color: '#38bdf8',
+    };
     rShoulder.add(rThruster);
+
+    // IK Pelvis Root Anchor Marker
+    const ikAnchorGeo = new THREE.OctahedronGeometry(0.09, 0);
+    const ikAnchorMat = new THREE.MeshStandardMaterial({
+      color: 0xf59e0b,
+      emissive: 0xf59e0b,
+      emissiveIntensity: 0.8,
+      wireframe: true,
+    });
+    const ikAnchorMesh = new THREE.Mesh(ikAnchorGeo, ikAnchorMat);
+    ikAnchorMesh.position.set(0, 0, 0);
+    ikAnchorMesh.userData = {
+      isInteractive: true,
+      title: 'IK Pelvis Root Anchor',
+      category: 'Kinematic Root',
+      icon: '🎯',
+      functionDesc: 'Master kinetic anchor node coordinating center-of-mass trajectory, hip sways, bounce oscillations, and lower-body weight distribution for all emotes in ICALLOG.',
+      specs: '6-DOF Origin Node • Octahedron Wireframe • Root Joint',
+      color: '#f59e0b',
+    };
+    rootBone.add(ikAnchorMesh);
+
+    // Register all interactive 3D elements for raycast tooltips
+    interactiveObjectsRef.current = [
+      platform,
+      ring,
+      grid,
+      skinnedMesh,
+      visorMesh,
+      lThruster,
+      rThruster,
+      ikAnchorMesh,
+      audioOrb,
+      lightFocus,
+    ];
 
     // Skeleton Helper
     const skeletonHelper = new THREE.SkeletonHelper(characterGroup);
@@ -531,6 +701,15 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = ({
         }
       }
 
+      // Animate floating interactive markers
+      if (audioOrb) {
+        audioOrb.rotation.y += 0.015;
+        audioOrb.rotation.x += 0.008;
+      }
+      if (ikAnchorMesh) {
+        ikAnchorMesh.rotation.y += 0.025;
+      }
+
       // Update skeleton helper matrix safely
       if (skeletonHelperRef.current) {
         skeletonHelperRef.current.updateMatrixWorld(true);
@@ -603,24 +782,77 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = ({
     }
   }, [showSkeleton]);
 
-  // Mouse Orbit Drag Controls
+  // Mouse Orbit Drag Controls & Interactive 3D Subsystem Hover Raycaster
   const handleMouseDown = (e: React.MouseEvent) => {
     isDraggingRef.current = true;
+    setHoveredObject(null);
     prevMousePos.current = { x: e.clientX, y: e.clientY };
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDraggingRef.current) return;
-    const deltaX = e.clientX - prevMousePos.current.x;
-    const deltaY = e.clientY - prevMousePos.current.y;
-    prevMousePos.current = { x: e.clientX, y: e.clientY };
+    if (isDraggingRef.current) {
+      setHoveredObject(null);
+      const deltaX = e.clientX - prevMousePos.current.x;
+      const deltaY = e.clientY - prevMousePos.current.y;
+      prevMousePos.current = { x: e.clientX, y: e.clientY };
 
-    cameraAngle.current.theta -= deltaX * 0.008;
-    cameraAngle.current.phi = Math.max(-0.2, Math.min(1.2, cameraAngle.current.phi + deltaY * 0.008));
+      cameraAngle.current.theta -= deltaX * 0.008;
+      cameraAngle.current.phi = Math.max(-0.2, Math.min(1.2, cameraAngle.current.phi + deltaY * 0.008));
+      return;
+    }
+
+    // Interactive Hover Raycaster when cursor is moving without drag
+    if (!mountRef.current || !cameraRef.current || interactiveObjectsRef.current.length === 0) return;
+    const rect = mountRef.current.getBoundingClientRect();
+    const mouseX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    const mouseY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    mouseVecRef.current.set(mouseX, mouseY);
+
+    raycasterRef.current.setFromCamera(mouseVecRef.current, cameraRef.current);
+    const intersects = raycasterRef.current.intersectObjects(interactiveObjectsRef.current, true);
+
+    let hitData: any = null;
+    for (const hit of intersects) {
+      let current: THREE.Object3D | null = hit.object;
+      while (current) {
+        if (current.userData && current.userData.isInteractive) {
+          hitData = current.userData;
+          break;
+        }
+        current = current.parent;
+      }
+      if (hitData) break;
+    }
+
+    if (hitData) {
+      setHoveredObject({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+        title: hitData.title,
+        category: hitData.category,
+        icon: hitData.icon || '🔍',
+        functionDesc: hitData.functionDesc,
+        specs: hitData.specs,
+        color: hitData.color,
+      });
+      if (mountRef.current) {
+        mountRef.current.style.cursor = 'pointer';
+      }
+    } else {
+      setHoveredObject(null);
+      if (mountRef.current) {
+        mountRef.current.style.cursor = 'grab';
+      }
+    }
   };
 
   const handleMouseUp = () => {
     isDraggingRef.current = false;
+  };
+
+  const handleMouseLeave = () => {
+    isDraggingRef.current = false;
+    setHoveredObject(null);
   };
 
   const handleWheel = (e: React.WheelEvent) => {
@@ -814,7 +1046,18 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-7 space-y-4">
               <div>
-                <label className="text-xs text-slate-300 block mb-1 font-semibold">3D Model Text Description / Prompt</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-slate-300 font-semibold">3D Model Text Description / Prompt</label>
+                  <button
+                    type="button"
+                    disabled={isEnhancing3D || !text3dPrompt.trim()}
+                    onClick={handleEnhance3DPrompt}
+                    className="px-2.5 py-1 rounded-lg bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-300 border border-cyan-500/40 text-[11px] font-bold flex items-center gap-1 transition-all disabled:opacity-50"
+                  >
+                    <Sparkles className={`w-3 h-3 ${isEnhancing3D ? 'animate-spin' : ''}`} />
+                    <span>{isEnhancing3D ? 'Enhancing...' : 'Enhance 3D AI'}</span>
+                  </button>
+                </div>
                 <textarea
                   rows={3}
                   value={text3dPrompt}
@@ -1293,10 +1536,60 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = ({
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
+          onMouseLeave={handleMouseLeave}
           onWheel={handleWheel}
           className="lg:col-span-3 h-[540px] rounded-3xl overflow-hidden relative cursor-grab active:cursor-grabbing border border-slate-800 bg-[#0a0e17] shadow-2xl"
         >
+          {/* Interactive Hover Tooltip for 3D Objects */}
+          {hoveredObject && (
+            <div
+              style={{
+                left: `${Math.min(hoveredObject.x + 16, 440)}px`,
+                top: `${Math.min(hoveredObject.y + 16, 340)}px`,
+              }}
+              className="absolute pointer-events-none z-30 w-72 rounded-2xl p-3.5 bg-slate-950/95 backdrop-blur-xl border border-cyan-500/60 shadow-2xl shadow-cyan-950/80 transition-all duration-75 animate-in fade-in zoom-in-95"
+            >
+              <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800/80">
+                <div className="flex items-center gap-2">
+                  <span className="text-base p-1.5 rounded-xl bg-cyan-950/80 border border-cyan-500/40">
+                    {hoveredObject.icon}
+                  </span>
+                  <div>
+                    <h4 className="text-xs font-bold text-white font-['Syne'] leading-tight">
+                      {hoveredObject.title}
+                    </h4>
+                    <span className="text-[10px] text-cyan-400 font-mono font-medium">
+                      {hoveredObject.category}
+                    </span>
+                  </div>
+                </div>
+                <span className="flex h-2 w-2 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-[11px] text-slate-300 leading-relaxed font-sans">
+                  {hoveredObject.functionDesc}
+                </p>
+
+                <div className="pt-2 flex items-center justify-between text-[9px] font-mono border-t border-slate-900">
+                  <span className="text-cyan-300 font-semibold">{hoveredObject.specs}</span>
+                  <span className="px-1.5 py-0.5 rounded bg-cyan-950/60 text-cyan-400 border border-cyan-800/50">
+                    ICALLOG 3D Subsystem
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Quick Subsystem Inspection Tip Badge */}
+          <div className="absolute top-4 right-4 pointer-events-none z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/70 backdrop-blur-md border border-slate-800 text-[10px] text-slate-400 font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+            <span>Hover on 3D objects to inspect subsystems</span>
+          </div>
+
           {/* Overlay HUD stats */}
           <div className="absolute top-4 left-4 pointer-events-none flex flex-col gap-1.5 z-10">
             <span className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-black/70 backdrop-blur-md border border-slate-700/60 text-cyan-300">
