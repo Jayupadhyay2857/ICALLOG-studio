@@ -174,7 +174,54 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
   const [vaultItems, setVaultItems] = useState<CameraMediaItem[]>([]);
   const [selectedVaultItem, setSelectedVaultItem] = useState<CameraMediaItem | null>(null);
   const [isVaultGalleryOpen, setIsVaultGalleryOpen] = useState<boolean>(false);
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'lut' | 'grid' | 'zoom' | 'virtual_bg' | 'audio' | 'prompter' | 'adjust'>('lut');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<
+    'lut' | 'virtual_bg' | 'studio_lighting' | 'zoom' | 'grid' | 'prompter' | 'adjust'
+  >('lut');
+
+  // Virtual 3-Point Studio Lighting Control State
+  const [virtualLightingEnabled, setVirtualLightingEnabled] = useState<boolean>(false);
+  const [lightingPreset, setLightingPreset] = useState<
+    'studio_portrait' | 'cyber_neon' | 'dramatic_noir' | 'golden_sunset' | 'cool_broadcaster' | 'custom'
+  >('studio_portrait');
+
+  // Key Light (Primary Main Light)
+  const [keyIntensity, setKeyIntensity] = useState<number>(75);
+  const [keyColor, setKeyColor] = useState<string>('#FFF4EA');
+  const [keyPosX, setKeyPosX] = useState<number>(25);
+  const [keyPosY, setKeyPosY] = useState<number>(25);
+  const [keyRadius, setKeyRadius] = useState<number>(65);
+
+  // Fill Light (Secondary Soft Shadow Fill)
+  const [fillIntensity, setFillIntensity] = useState<number>(45);
+  const [fillColor, setFillColor] = useState<string>('#E0F2FE');
+  const [fillPosX, setFillPosX] = useState<number>(75);
+  const [fillPosY, setFillPosY] = useState<number>(45);
+  const [fillRadius, setFillRadius] = useState<number>(75);
+
+  // Rim Light (Backlight Hair Highlight)
+  const [rimIntensity, setRimIntensity] = useState<number>(65);
+  const [rimColor, setRimColor] = useState<string>('#38BDF8');
+  const [rimPosX, setRimPosX] = useState<number>(50);
+  const [rimPosY, setRimPosY] = useState<number>(10);
+  const [rimRadius, setRimRadius] = useState<number>(45);
+
+  // Composite Blend Mode & Active Stage Node
+  const [lightingBlendMode, setLightingBlendMode] = useState<
+    'soft-light' | 'overlay' | 'screen' | 'color-dodge' | 'hard-light'
+  >('soft-light');
+  const [activeLightNode, setActiveLightNode] = useState<'key' | 'fill' | 'rim'>('key');
+
+  // AI Auto-Correction Layer State
+  const [aiAutoCorrectionEnabled, setAiAutoCorrectionEnabled] = useState<boolean>(false);
+  const [autoExposureGain, setAutoExposureGain] = useState<number>(1.0);
+  const [autoWbGainR, setAutoWbGainR] = useState<number>(1.0);
+  const [autoWbGainG, setAutoWbGainG] = useState<number>(1.0);
+  const [autoWbGainB, setAutoWbGainB] = useState<number>(1.0);
+  const [aiDenoiseThreshold, setAiDenoiseThreshold] = useState<number>(18);
+  const [measuredLuma, setMeasuredLuma] = useState<number>(120);
+  const [measuredColorTemp, setMeasuredColorTemp] = useState<number>(5800);
+  const [histogramData, setHistogramData] = useState<number[]>(new Array(16).fill(0));
+  const [aiAutoTuneActive, setAiAutoTuneActive] = useState<boolean>(false);
 
   // Virtual Background & Real-time Background Removal State
   const [virtualBg, setVirtualBg] = useState<'none' | 'blur' | 'cyberpunk_tokyo' | 'futuristic_studio' | 'space_nebula' | 'minimal_office' | 'neon_sunset' | 'green_screen' | 'custom'>('none');
@@ -791,7 +838,246 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
     targetCtx.putImageData(frameData, 0, 0);
   };
 
-  // 4. Continuous Animation Frame Loop for Live Smart Chroma Keying
+  // --- VIRTUAL 3-POINT STUDIO LIGHTING ENGINE ---
+  const applyLightingPreset = (
+    p: 'studio_portrait' | 'cyber_neon' | 'dramatic_noir' | 'golden_sunset' | 'cool_broadcaster'
+  ) => {
+    setLightingPreset(p);
+    if (p === 'studio_portrait') {
+      setKeyIntensity(80); setKeyColor('#FFF4EA'); setKeyPosX(25); setKeyPosY(25); setKeyRadius(65);
+      setFillIntensity(45); setFillColor('#E0F2FE'); setFillPosX(75); setFillPosY(45); setFillRadius(75);
+      setRimIntensity(55); setRimColor('#FDE047'); setRimPosX(50); setRimPosY(10); setRimRadius(45);
+      setLightingBlendMode('soft-light');
+    } else if (p === 'cyber_neon') {
+      setKeyIntensity(90); setKeyColor('#EC4899'); setKeyPosX(20); setKeyPosY(30); setKeyRadius(60);
+      setFillIntensity(65); setFillColor('#06B6D4'); setFillPosX(80); setFillPosY(50); setFillRadius(70);
+      setRimIntensity(85); setRimColor('#A855F7'); setRimPosX(50); setRimPosY(5); setRimRadius(50);
+      setLightingBlendMode('overlay');
+    } else if (p === 'dramatic_noir') {
+      setKeyIntensity(95); setKeyColor('#FFFFFF'); setKeyPosX(15); setKeyPosY(20); setKeyRadius(50);
+      setFillIntensity(15); setFillColor('#334155'); setFillPosX(85); setFillPosY(60); setFillRadius(80);
+      setRimIntensity(80); setRimColor('#F8FAFC'); setRimPosX(50); setRimPosY(10); setRimRadius(35);
+      setLightingBlendMode('hard-light');
+    } else if (p === 'golden_sunset') {
+      setKeyIntensity(85); setKeyColor('#F97316'); setKeyPosX(30); setKeyPosY(30); setKeyRadius(70);
+      setFillIntensity(40); setFillColor('#8B5CF6'); setFillPosX(70); setFillPosY(50); setFillRadius(75);
+      setRimIntensity(75); setRimColor('#FDE047'); setRimPosX(50); setRimPosY(10); setRimRadius(45);
+      setLightingBlendMode('soft-light');
+    } else if (p === 'cool_broadcaster') {
+      setKeyIntensity(75); setKeyColor('#FFFFFF'); setKeyPosX(30); setKeyPosY(20); setKeyRadius(60);
+      setFillIntensity(50); setFillColor('#38BDF8'); setFillPosX(70); setFillPosY(40); setFillRadius(70);
+      setRimIntensity(45); setRimColor('#E0F2FE'); setRimPosX(50); setRimPosY(15); setRimRadius(40);
+      setLightingBlendMode('soft-light');
+    }
+  };
+
+  const drawVirtualStudioLighting = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
+    if (!virtualLightingEnabled) return;
+
+    ctx.save();
+
+    // 1. Key Light (Primary Main Light)
+    if (keyIntensity > 0) {
+      const kx = (keyPosX / 100) * w;
+      const ky = (keyPosY / 100) * h;
+      const kr = (keyRadius / 100) * Math.max(w, h);
+      const kGrad = ctx.createRadialGradient(kx, ky, 5, kx, ky, kr);
+
+      const kR = parseInt(keyColor.slice(1, 3), 16) || 255;
+      const kG = parseInt(keyColor.slice(3, 5), 16) || 255;
+      const kB = parseInt(keyColor.slice(5, 7), 16) || 255;
+      const kAlpha = (keyIntensity / 100) * 0.75;
+
+      kGrad.addColorStop(0, `rgba(${kR}, ${kG}, ${kB}, ${kAlpha})`);
+      kGrad.addColorStop(0.5, `rgba(${kR}, ${kG}, ${kB}, ${kAlpha * 0.35})`);
+      kGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+      ctx.globalCompositeOperation = lightingBlendMode as GlobalCompositeOperation;
+      ctx.fillStyle = kGrad;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    // 2. Fill Light (Soft Shadow Diffuser)
+    if (fillIntensity > 0) {
+      const fx = (fillPosX / 100) * w;
+      const fy = (fillPosY / 100) * h;
+      const fr = (fillRadius / 100) * Math.max(w, h);
+      const fGrad = ctx.createRadialGradient(fx, fy, 10, fx, fy, fr);
+
+      const fR = parseInt(fillColor.slice(1, 3), 16) || 200;
+      const fG = parseInt(fillColor.slice(3, 5), 16) || 220;
+      const fB = parseInt(fillColor.slice(5, 7), 16) || 255;
+      const fAlpha = (fillIntensity / 100) * 0.5;
+
+      fGrad.addColorStop(0, `rgba(${fR}, ${fG}, ${fB}, ${fAlpha})`);
+      fGrad.addColorStop(0.6, `rgba(${fR}, ${fG}, ${fB}, ${fAlpha * 0.2})`);
+      fGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.fillStyle = fGrad;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    // 3. Rim Light (Backlight Edge Highlight)
+    if (rimIntensity > 0) {
+      const rx = (rimPosX / 100) * w;
+      const ry = (rimPosY / 100) * h;
+      const rr = (rimRadius / 100) * Math.max(w, h);
+      const rGrad = ctx.createRadialGradient(rx, ry, 2, rx, ry, rr);
+
+      const rR = parseInt(rimColor.slice(1, 3), 16) || 56;
+      const rG = parseInt(rimColor.slice(3, 5), 16) || 189;
+      const rB = parseInt(rimColor.slice(5, 7), 16) || 248;
+      const rAlpha = (rimIntensity / 100) * 0.85;
+
+      rGrad.addColorStop(0, `rgba(${rR}, ${rG}, ${rB}, ${rAlpha})`);
+      rGrad.addColorStop(0.4, `rgba(${rR}, ${rG}, ${rB}, ${rAlpha * 0.45})`);
+      rGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = rGrad;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    ctx.restore();
+  };
+
+  // --- REAL-TIME AI AUTO-CORRECTION LAYER FUNCTIONS ---
+
+  const runAiAutoTuneSceneAnalysis = () => {
+    const video = videoRef.current;
+    if (!video || video.videoWidth === 0) {
+      onNotify('AI Auto-Tune', 'Camera feed initializing... Please try again in a moment.', 'warning');
+      return;
+    }
+
+    setAiAutoTuneActive(true);
+    playCameraSound('beep');
+
+    const sampleCanvas = document.createElement('canvas');
+    sampleCanvas.width = 160;
+    sampleCanvas.height = 90;
+    const sCtx = sampleCanvas.getContext('2d');
+    if (!sCtx) return;
+
+    sCtx.drawImage(video, 0, 0, 160, 90);
+    const imgData = sCtx.getImageData(0, 0, 160, 90);
+    const data = imgData.data;
+    const len = data.length;
+
+    let totalR = 0, totalG = 0, totalB = 0, totalLuma = 0;
+    const pixels = len / 4;
+    const bins = new Array(16).fill(0);
+
+    for (let i = 0; i < len; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+
+      totalR += r;
+      totalG += g;
+      totalB += b;
+      totalLuma += luma;
+
+      const binIdx = Math.min(15, Math.floor(luma / 16));
+      bins[binIdx]++;
+    }
+
+    const avgR = totalR / pixels;
+    const avgG = totalG / pixels;
+    const avgB = totalB / pixels;
+    const meanLuma = totalLuma / pixels;
+
+    setMeasuredLuma(Math.round(meanLuma));
+    setHistogramData(bins);
+
+    // Auto-Exposure Gain Target = 128 (Neutral Midtone)
+    const targetLuma = 128;
+    let gain = targetLuma / (meanLuma || 1);
+    gain = Math.max(0.6, Math.min(2.2, gain));
+    setAutoExposureGain(parseFloat(gain.toFixed(2)));
+
+    // Gray World Auto-White Balance Gains
+    const avgAvg = (avgR + avgG + avgB) / 3;
+    const gainR = Math.max(0.7, Math.min(1.4, avgAvg / (avgR || 1)));
+    const gainG = Math.max(0.7, Math.min(1.4, avgAvg / (avgG || 1)));
+    const gainB = Math.max(0.7, Math.min(1.4, avgAvg / (avgB || 1)));
+
+    setAutoWbGainR(parseFloat(gainR.toFixed(2)));
+    setAutoWbGainG(parseFloat(gainG.toFixed(2)));
+    setAutoWbGainB(parseFloat(gainB.toFixed(2)));
+
+    // Estimate Kelvin Temperature
+    const rbRatio = avgR / (avgB || 1);
+    const estKelvin = Math.round(5500 / (rbRatio * 0.9));
+    setMeasuredColorTemp(Math.max(2800, Math.min(8500, estKelvin)));
+
+    // Estimate Spatial Noise Reduction Level
+    const noiseLevel = meanLuma < 70 ? 28 : meanLuma < 100 ? 18 : 10;
+    setAiDenoiseThreshold(noiseLevel);
+
+    setAiAutoCorrectionEnabled(true);
+    setAiAutoTuneActive(false);
+
+    onNotify(
+      'AI Scene Auto-Corrected ⚡',
+      `Exposure: ${gain.toFixed(2)}x, White Balance: ${estKelvin}K, Noise Reduction: ${noiseLevel}px.`,
+      'success'
+    );
+  };
+
+  const applyAiAutoCorrectionFrame = (
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number
+  ) => {
+    if (!aiAutoCorrectionEnabled) return;
+
+    try {
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const data = imgData.data;
+      const len = data.length;
+
+      const exp = autoExposureGain;
+      const wr = autoWbGainR;
+      const wg = autoWbGainG;
+      const wb = autoWbGainB;
+      const denoise = aiDenoiseThreshold;
+
+      for (let i = 0; i < len; i += 4) {
+        let r = data[i] * exp * wr;
+        let g = data[i + 1] * exp * wg;
+        let b = data[i + 2] * exp * wb;
+
+        // Highlight Compression
+        if (r > 230) r = 230 + (r - 230) * 0.5;
+        if (g > 230) g = 230 + (g - 230) * 0.5;
+        if (b > 230) b = 230 + (b - 230) * 0.5;
+
+        // Dark Shadow Denoising
+        if (denoise > 0) {
+          const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+          if (luma < 65) {
+            const avg = (r + g + b) / 3;
+            r = r * 0.75 + avg * 0.3;
+            g = g * 0.75 + avg * 0.3;
+            b = b * 0.75 + avg * 0.3;
+          }
+        }
+
+        data[i] = Math.min(255, Math.max(0, Math.floor(r)));
+        data[i + 1] = Math.min(255, Math.max(0, Math.floor(g)));
+        data[i + 2] = Math.min(255, Math.max(0, Math.floor(b)));
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+    } catch (e) {
+      console.warn('AI Auto-Correction error:', e);
+    }
+  };
+
+  // 4. Continuous Animation Frame Loop for Live Smart Chroma Keying, AI Auto-Correction & Virtual Studio Lighting
   useEffect(() => {
     let animId: number;
     const startTime = Date.now();
@@ -801,7 +1087,7 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
       const liveCanvas = liveCanvasRef.current;
       const hiddenCanvas = canvasRef.current;
 
-      if (smartChromaEnabled && video && video.readyState >= 2 && liveCanvas) {
+      if ((smartChromaEnabled || virtualLightingEnabled || aiAutoCorrectionEnabled) && video && video.readyState >= 2 && liveCanvas) {
         const w = video.videoWidth || 1280;
         const h = video.videoHeight || 720;
 
@@ -814,27 +1100,48 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
         if (lCtx) {
           const timeSec = (Date.now() - startTime) / 1000;
 
-          // Render WebGL Texture Background
-          drawWebGlEngineTexture(lCtx, w, h, webglTexture, timeSec, webglAnimSpeed, webglIntensity);
+          if (smartChromaEnabled) {
+            // Render WebGL Texture Background
+            drawWebGlEngineTexture(lCtx, w, h, webglTexture, timeSec, webglAnimSpeed, webglIntensity);
 
-          if (hiddenCanvas) {
-            if (hiddenCanvas.width !== w || hiddenCanvas.height !== h) {
-              hiddenCanvas.width = w;
-              hiddenCanvas.height = h;
-            }
-            const hCtx = hiddenCanvas.getContext('2d');
-            if (hCtx) {
-              hCtx.save();
-              if (isMirrored || facingMode === 'user') {
-                hCtx.translate(w, 0);
-                hCtx.scale(-1, 1);
+            if (hiddenCanvas) {
+              if (hiddenCanvas.width !== w || hiddenCanvas.height !== h) {
+                hiddenCanvas.width = w;
+                hiddenCanvas.height = h;
               }
-              hCtx.drawImage(video, 0, 0, w, h);
-              hCtx.restore();
+              const hCtx = hiddenCanvas.getContext('2d');
+              if (hCtx) {
+                hCtx.save();
+                if (isMirrored || facingMode === 'user') {
+                  hCtx.translate(w, 0);
+                  hCtx.scale(-1, 1);
+                }
+                hCtx.drawImage(video, 0, 0, w, h);
+                hCtx.restore();
 
-              // Apply Smart Chroma Key and composite subject over WebGL background
-              applyChromaKeyFrame(hCtx, lCtx, w, h, keyColorHex, keyTolerance, keySmoothness, spillSuppression);
+                // Apply Smart Chroma Key and composite subject over WebGL background
+                applyChromaKeyFrame(hCtx, lCtx, w, h, keyColorHex, keyTolerance, keySmoothness, spillSuppression);
+              }
             }
+          } else {
+            // Draw Video Feed directly to live canvas
+            lCtx.save();
+            if (isMirrored || facingMode === 'user') {
+              lCtx.translate(w, 0);
+              lCtx.scale(-1, 1);
+            }
+            lCtx.drawImage(video, 0, 0, w, h);
+            lCtx.restore();
+          }
+
+          // Apply AI Auto-Correction Layer (Exposure, White Balance & Denoise)
+          if (aiAutoCorrectionEnabled) {
+            applyAiAutoCorrectionFrame(lCtx, w, h);
+          }
+
+          // Apply Virtual 3-Point Studio Lighting
+          if (virtualLightingEnabled) {
+            drawVirtualStudioLighting(lCtx, w, h);
           }
         }
       }
@@ -842,7 +1149,7 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
       animId = requestAnimationFrame(processFrame);
     };
 
-    if (smartChromaEnabled) {
+    if (smartChromaEnabled || virtualLightingEnabled || aiAutoCorrectionEnabled) {
       animId = requestAnimationFrame(processFrame);
     }
 
@@ -851,6 +1158,8 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
     };
   }, [
     smartChromaEnabled,
+    virtualLightingEnabled,
+    aiAutoCorrectionEnabled,
     webglTexture,
     webglAnimSpeed,
     webglIntensity,
@@ -858,6 +1167,27 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
     keyTolerance,
     keySmoothness,
     spillSuppression,
+    autoExposureGain,
+    autoWbGainR,
+    autoWbGainG,
+    autoWbGainB,
+    aiDenoiseThreshold,
+    keyIntensity,
+    keyColor,
+    keyPosX,
+    keyPosY,
+    keyRadius,
+    fillIntensity,
+    fillColor,
+    fillPosX,
+    fillPosY,
+    fillRadius,
+    rimIntensity,
+    rimColor,
+    rimPosX,
+    rimPosY,
+    rimRadius,
+    lightingBlendMode,
     isMirrored,
     facingMode,
   ]);
@@ -980,6 +1310,16 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     }
     ctx.restore();
+
+    // 4a. Apply AI Auto-Correction Layer
+    if (aiAutoCorrectionEnabled) {
+      applyAiAutoCorrectionFrame(ctx, canvas.width, canvas.height);
+    }
+
+    // 4b. Apply Virtual 3-Point Studio Lighting
+    if (virtualLightingEnabled) {
+      drawVirtualStudioLighting(ctx, canvas.width, canvas.height);
+    }
 
     // 5. Watermark & Date/Time Overlay
     if (watermarkEnabled || showTimestamp) {
@@ -1160,7 +1500,7 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
       // START Recording using MediaRecorder API
       let activeStream: MediaStream | null = null;
 
-      if (smartChromaEnabled && liveCanvasRef.current) {
+      if ((smartChromaEnabled || virtualLightingEnabled || aiAutoCorrectionEnabled) && liveCanvasRef.current) {
         try {
           activeStream = liveCanvasRef.current.captureStream(30);
         } catch (e) {
@@ -1575,8 +1915,8 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                 </div>
               )}
 
-              {/* Live WebGL Keyed Canvas (rendered when Smart Chroma Key is active) */}
-              {smartChromaEnabled && (
+              {/* Live WebGL / Lighting / AI Canvas (rendered when Smart Chroma Key, Virtual Lighting, or AI Auto-Correction is active) */}
+              {(smartChromaEnabled || virtualLightingEnabled || aiAutoCorrectionEnabled) && (
                 <canvas
                   ref={liveCanvasRef}
                   className="w-full h-full object-cover transition-all duration-150 absolute inset-0 z-10"
@@ -1597,7 +1937,7 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                     beautyFilterEnabled,
                   }),
                 }}
-                className={`w-full h-full object-cover transition-transform duration-150 ${smartChromaEnabled ? 'opacity-0 absolute pointer-events-none' : ''}`}
+                className={`w-full h-full object-cover transition-transform duration-150 ${smartChromaEnabled || virtualLightingEnabled || aiAutoCorrectionEnabled ? 'opacity-0 absolute pointer-events-none' : ''}`}
               />
 
               {/* Hidden Canvas for High-Res Processing */}
@@ -2103,6 +2443,18 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                   Virtual BG
                 </button>
                 <button
+                  onClick={() => setActiveSettingsTab('studio_lighting')}
+                  className={`pb-1 font-bold transition-colors ${activeSettingsTab === 'studio_lighting' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-white'}`}
+                >
+                  Lighting
+                </button>
+                <button
+                  onClick={() => setActiveSettingsTab('adjust')}
+                  className={`pb-1 font-bold transition-colors ${activeSettingsTab === 'adjust' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-white'}`}
+                >
+                  AI Auto ⚡
+                </button>
+                <button
                   onClick={() => setActiveSettingsTab('zoom')}
                   className={`pb-1 font-bold transition-colors ${activeSettingsTab === 'zoom' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-white'}`}
                 >
@@ -2532,6 +2884,513 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                         onChange={(e) => setChromaSensitivity(parseInt(e.target.value))}
                         className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
                       />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB: VIRTUAL 3-POINT STUDIO LIGHTING PANEL */}
+              {activeSettingsTab === 'studio_lighting' && (
+                <div className="space-y-3 text-xs">
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-cyan-500/30">
+                    <div className="flex items-center gap-2">
+                      <Sun className="w-4 h-4 text-amber-400" />
+                      <div>
+                        <div className="text-xs font-bold text-white font-['Syne']">
+                          3-Point Studio Lighting
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          Key, Fill & Rim Backlight Simulation
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !virtualLightingEnabled;
+                        setVirtualLightingEnabled(next);
+                        onNotify(
+                          'Studio Lighting',
+                          `3-Point Lighting Simulation ${next ? 'ACTIVATED' : 'DEACTIVATED'}`,
+                          next ? 'success' : 'info'
+                        );
+                      }}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold transition-all shadow-md ${
+                        virtualLightingEnabled
+                          ? 'bg-gradient-to-r from-amber-400 to-cyan-400 text-slate-950 font-black shadow-[0_0_12px_rgba(251,191,36,0.5)]'
+                          : 'bg-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {virtualLightingEnabled ? 'ACTIVE 💡' : 'OFF'}
+                    </button>
+                  </div>
+
+                  {virtualLightingEnabled && (
+                    <div className="space-y-3">
+                      {/* Presets Grid */}
+                      <div className="space-y-1">
+                        <div className="text-[10px] text-slate-400 font-bold">Studio Lighting Presets</div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {[
+                            { id: 'studio_portrait', label: 'Studio Portrait', icon: '📸' },
+                            { id: 'cyber_neon', label: 'Cyber Neon', icon: '🌆' },
+                            { id: 'dramatic_noir', label: 'Dramatic Noir', icon: '🎬' },
+                            { id: 'golden_sunset', label: 'Golden Sunset', icon: '🌅' },
+                            { id: 'cool_broadcaster', label: 'Cool Broadcaster', icon: '🎙️' },
+                          ].map((p) => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => applyLightingPreset(p.id as any)}
+                              className={`p-1.5 rounded-xl text-left text-[11px] font-semibold flex items-center gap-1.5 transition-all ${
+                                lightingPreset === p.id
+                                  ? 'bg-gradient-to-r from-amber-500/80 to-cyan-600/80 text-white border border-amber-400/60 font-bold shadow'
+                                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                              }`}
+                            >
+                              <span>{p.icon}</span>
+                              <span className="truncate">{p.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Interactive 2D Stage Visualizer Box */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold">
+                          <span>Interactive Light Stage Position</span>
+                          <span className="text-cyan-400 font-mono">Click to position {activeLightNode.toUpperCase()} Light</span>
+                        </div>
+                        <div
+                          className="relative w-full h-32 rounded-2xl bg-slate-950 border border-slate-800 overflow-hidden cursor-crosshair shadow-inner"
+                          onClick={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const clickX = Math.round(((e.clientX - rect.left) / rect.width) * 100);
+                            const clickY = Math.round(((e.clientY - rect.top) / rect.height) * 100);
+                            if (activeLightNode === 'key') {
+                              setKeyPosX(clickX); setKeyPosY(clickY);
+                            } else if (activeLightNode === 'fill') {
+                              setFillPosX(clickX); setFillPosY(clickY);
+                            } else if (activeLightNode === 'rim') {
+                              setRimPosX(clickX); setRimPosY(clickY);
+                            }
+                            setLightingPreset('custom');
+                          }}
+                        >
+                          {/* Subject Silhouette Center Circle */}
+                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 rounded-full border border-white/20 bg-slate-900/60 flex flex-col items-center justify-center text-[9px] text-slate-400 pointer-events-none">
+                            <span>Subject</span>
+                          </div>
+
+                          {/* Key Light Node (K) */}
+                          <div
+                            className={`absolute -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] shadow-lg transition-transform ${
+                              activeLightNode === 'key' ? 'ring-2 ring-amber-300 scale-125 z-20' : 'opacity-80 z-10'
+                            }`}
+                            style={{
+                              left: `${keyPosX}%`,
+                              top: `${keyPosY}%`,
+                              backgroundColor: keyColor,
+                              color: '#000000',
+                            }}
+                            onClick={(e) => { e.stopPropagation(); setActiveLightNode('key'); }}
+                            title="Key Light (Main Source)"
+                          >
+                            K
+                          </div>
+
+                          {/* Fill Light Node (F) */}
+                          <div
+                            className={`absolute -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] shadow-lg transition-transform ${
+                              activeLightNode === 'fill' ? 'ring-2 ring-sky-300 scale-125 z-20' : 'opacity-80 z-10'
+                            }`}
+                            style={{
+                              left: `${fillPosX}%`,
+                              top: `${fillPosY}%`,
+                              backgroundColor: fillColor,
+                              color: '#000000',
+                            }}
+                            onClick={(e) => { e.stopPropagation(); setActiveLightNode('fill'); }}
+                            title="Fill Light (Soft Shadow Fill)"
+                          >
+                            F
+                          </div>
+
+                          {/* Rim Light Node (R) */}
+                          <div
+                            className={`absolute -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] shadow-lg transition-transform ${
+                              activeLightNode === 'rim' ? 'ring-2 ring-cyan-300 scale-125 z-20' : 'opacity-80 z-10'
+                            }`}
+                            style={{
+                              left: `${rimPosX}%`,
+                              top: `${rimPosY}%`,
+                              backgroundColor: rimColor,
+                              color: '#000000',
+                            }}
+                            onClick={(e) => { e.stopPropagation(); setActiveLightNode('rim'); }}
+                            title="Rim Backlight (Hair Highlight)"
+                          >
+                            R
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Light Source Switcher Tabs */}
+                      <div className="grid grid-cols-3 gap-1.5 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setActiveLightNode('key')}
+                          className={`py-1.5 rounded-xl font-bold transition-all text-[10px] flex items-center justify-center gap-1 ${
+                            activeLightNode === 'key'
+                              ? 'bg-amber-400 text-slate-950 font-black shadow-md'
+                              : 'bg-slate-900 text-slate-400 border border-slate-800'
+                          }`}
+                        >
+                          <Sun className="w-3 h-3" /> Key Light
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveLightNode('fill')}
+                          className={`py-1.5 rounded-xl font-bold transition-all text-[10px] flex items-center justify-center gap-1 ${
+                            activeLightNode === 'fill'
+                              ? 'bg-sky-400 text-slate-950 font-black shadow-md'
+                              : 'bg-slate-900 text-slate-400 border border-slate-800'
+                          }`}
+                        >
+                          <Sun className="w-3 h-3" /> Fill Light
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveLightNode('rim')}
+                          className={`py-1.5 rounded-xl font-bold transition-all text-[10px] flex items-center justify-center gap-1 ${
+                            activeLightNode === 'rim'
+                              ? 'bg-purple-400 text-slate-950 font-black shadow-md'
+                              : 'bg-slate-900 text-slate-400 border border-slate-800'
+                          }`}
+                        >
+                          <Sun className="w-3 h-3" /> Rim Light
+                        </button>
+                      </div>
+
+                      {/* Key Light Controls */}
+                      {activeLightNode === 'key' && (
+                        <div className="p-2.5 rounded-xl bg-slate-900/80 border border-amber-400/30 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-amber-300 text-[11px]">Key Light Settings (Main)</span>
+                            <input
+                              type="color"
+                              value={keyColor}
+                              onChange={(e) => { setKeyColor(e.target.value); setLightingPreset('custom'); }}
+                              className="w-6 h-6 rounded border border-white/30 cursor-pointer"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[10px] text-slate-400">
+                              <span>Intensity</span>
+                              <span className="font-mono text-amber-400 font-bold">{keyIntensity}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0" max="100" step="5"
+                              value={keyIntensity}
+                              onChange={(e) => { setKeyIntensity(parseInt(e.target.value)); setLightingPreset('custom'); }}
+                              className="w-full accent-amber-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[10px] text-slate-400">
+                              <span>Spread Radius</span>
+                              <span className="font-mono text-amber-400 font-bold">{keyRadius}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="20" max="100" step="5"
+                              value={keyRadius}
+                              onChange={(e) => { setKeyRadius(parseInt(e.target.value)); setLightingPreset('custom'); }}
+                              className="w-full accent-amber-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Fill Light Controls */}
+                      {activeLightNode === 'fill' && (
+                        <div className="p-2.5 rounded-xl bg-slate-900/80 border border-sky-400/30 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-sky-300 text-[11px]">Fill Light Settings (Soft Shadow)</span>
+                            <input
+                              type="color"
+                              value={fillColor}
+                              onChange={(e) => { setFillColor(e.target.value); setLightingPreset('custom'); }}
+                              className="w-6 h-6 rounded border border-white/30 cursor-pointer"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[10px] text-slate-400">
+                              <span>Intensity</span>
+                              <span className="font-mono text-sky-400 font-bold">{fillIntensity}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0" max="100" step="5"
+                              value={fillIntensity}
+                              onChange={(e) => { setFillIntensity(parseInt(e.target.value)); setLightingPreset('custom'); }}
+                              className="w-full accent-sky-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[10px] text-slate-400">
+                              <span>Softness Radius</span>
+                              <span className="font-mono text-sky-400 font-bold">{fillRadius}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="20" max="100" step="5"
+                              value={fillRadius}
+                              onChange={(e) => { setFillRadius(parseInt(e.target.value)); setLightingPreset('custom'); }}
+                              className="w-full accent-sky-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Rim Light Controls */}
+                      {activeLightNode === 'rim' && (
+                        <div className="p-2.5 rounded-xl bg-slate-900/80 border border-purple-400/30 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-purple-300 text-[11px]">Rim Backlight Settings (Edge Glow)</span>
+                            <input
+                              type="color"
+                              value={rimColor}
+                              onChange={(e) => { setRimColor(e.target.value); setLightingPreset('custom'); }}
+                              className="w-6 h-6 rounded border border-white/30 cursor-pointer"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[10px] text-slate-400">
+                              <span>Intensity</span>
+                              <span className="font-mono text-purple-400 font-bold">{rimIntensity}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0" max="100" step="5"
+                              value={rimIntensity}
+                              onChange={(e) => { setRimIntensity(parseInt(e.target.value)); setLightingPreset('custom'); }}
+                              className="w-full accent-purple-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[10px] text-slate-400">
+                              <span>Halo Radius</span>
+                              <span className="font-mono text-purple-400 font-bold">{rimRadius}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="10" max="80" step="5"
+                              value={rimRadius}
+                              onChange={(e) => { setRimRadius(parseInt(e.target.value)); setLightingPreset('custom'); }}
+                              className="w-full accent-purple-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Composite Blend Mode Selector */}
+                      <div className="space-y-1">
+                        <div className="text-[10px] text-slate-400 font-bold">Studio Blend Mode</div>
+                        <div className="grid grid-cols-3 gap-1">
+                          {[
+                            { id: 'soft-light', label: 'Soft Light' },
+                            { id: 'overlay', label: 'Overlay' },
+                            { id: 'color-dodge', label: 'Dodge Glow' },
+                            { id: 'hard-light', label: 'Hard Light' },
+                            { id: 'screen', label: 'Screen' },
+                          ].map((b) => (
+                            <button
+                              key={b.id}
+                              type="button"
+                              onClick={() => setLightingBlendMode(b.id as any)}
+                              className={`py-1 rounded-lg text-[10px] font-bold transition-all ${
+                                lightingBlendMode === b.id
+                                  ? 'bg-gradient-to-r from-amber-500 to-cyan-500 text-slate-950 font-black'
+                                  : 'bg-slate-900 text-slate-400 border border-slate-800'
+                              }`}
+                            >
+                              {b.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB: AI AUTO-CORRECTION LAYER & HISTOGRAM HUD */}
+              {activeSettingsTab === 'adjust' && (
+                <div className="space-y-3 text-xs">
+                  {/* AI Auto-Tune Hero Switch & Trigger */}
+                  <div className="p-3 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/80 to-slate-900 border border-cyan-500/40 space-y-3 shadow-xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                          <Zap className="w-4 h-4 fill-current animate-pulse" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white font-['Syne']">
+                            AI Auto-Correction Engine
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            Auto Exposure, Gray-World WB & Denoise
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !aiAutoCorrectionEnabled;
+                          setAiAutoCorrectionEnabled(next);
+                          if (next) {
+                            runAiAutoTuneSceneAnalysis();
+                          }
+                          onNotify(
+                            'AI Auto-Correction',
+                            `Real-time Canvas Auto-Correction ${next ? 'ACTIVATED' : 'DEACTIVATED'}`,
+                            next ? 'success' : 'info'
+                          );
+                        }}
+                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all shadow-md ${
+                          aiAutoCorrectionEnabled
+                            ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 font-black shadow-[0_0_12px_rgba(52,211,153,0.5)]'
+                            : 'bg-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {aiAutoCorrectionEnabled ? 'ACTIVE ⚡' : 'OFF'}
+                      </button>
+                    </div>
+
+                    {/* 1-Tap AI Auto-Tune Scene Analysis Trigger */}
+                    <button
+                      type="button"
+                      onClick={runAiAutoTuneSceneAnalysis}
+                      disabled={aiAutoTuneActive}
+                      className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-900/40 transition-all hover:scale-[1.02] active:scale-98"
+                    >
+                      <Sparkles className={`w-3.5 h-3.5 ${aiAutoTuneActive ? 'animate-spin' : ''}`} />
+                      <span>{aiAutoTuneActive ? 'Analyzing Feed Histogram...' : '⚡ 1-Tap AI Scene Auto-Tune'}</span>
+                    </button>
+                  </div>
+
+                  {aiAutoCorrectionEnabled && (
+                    <div className="space-y-3 pt-1">
+                      {/* Live Luminance Histogram Mini-HUD */}
+                      <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-slate-400 font-bold">Luminance Histogram HUD</span>
+                          <span className="text-cyan-400 font-mono font-bold">
+                            Luma: {measuredLuma} / 255 • {measuredColorTemp}K
+                          </span>
+                        </div>
+
+                        {/* Bars Graph */}
+                        <div className="w-full h-12 flex items-end gap-1 px-1 bg-slate-900/80 rounded-lg overflow-hidden border border-slate-800">
+                          {histogramData.map((val, idx) => {
+                            const maxVal = Math.max(...histogramData) || 1;
+                            const hPct = Math.round((val / maxVal) * 100);
+                            return (
+                              <div
+                                key={idx}
+                                className="flex-1 rounded-t bg-gradient-to-t from-indigo-600 via-cyan-500 to-emerald-400 transition-all duration-300"
+                                style={{ height: `${Math.max(8, hPct)}%` }}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Auto-Exposure Gain Adjustment */}
+                      <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-slate-300 font-bold">Auto-Exposure Gain</span>
+                          <span className="font-mono text-cyan-400 font-bold">{autoExposureGain.toFixed(2)}x</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.5"
+                          max="2.5"
+                          step="0.05"
+                          value={autoExposureGain}
+                          onChange={(e) => setAutoExposureGain(parseFloat(e.target.value))}
+                          className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                        />
+                      </div>
+
+                      {/* White Balance RGB Channel Gains */}
+                      <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                        <div className="text-[10px] text-slate-300 font-bold flex items-center justify-between">
+                          <span>Gray-World White Balance Gains</span>
+                          <span className="text-emerald-400 font-mono text-[9px]">{measuredColorTemp}K Kelvin</span>
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[9px] text-slate-400">
+                            <span className="text-rose-400 font-bold">Red Gain</span>
+                            <span className="font-mono text-rose-300 font-bold">{autoWbGainR.toFixed(2)}x</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0.6" max="1.6" step="0.02"
+                            value={autoWbGainR}
+                            onChange={(e) => setAutoWbGainR(parseFloat(e.target.value))}
+                            className="w-full accent-rose-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[9px] text-slate-400">
+                            <span className="text-emerald-400 font-bold">Green Gain</span>
+                            <span className="font-mono text-emerald-300 font-bold">{autoWbGainG.toFixed(2)}x</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0.6" max="1.6" step="0.02"
+                            value={autoWbGainG}
+                            onChange={(e) => setAutoWbGainG(parseFloat(e.target.value))}
+                            className="w-full accent-emerald-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[9px] text-slate-400">
+                            <span className="text-cyan-400 font-bold">Blue Gain</span>
+                            <span className="font-mono text-cyan-300 font-bold">{autoWbGainB.toFixed(2)}x</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0.6" max="1.6" step="0.02"
+                            value={autoWbGainB}
+                            onChange={(e) => setAutoWbGainB(parseFloat(e.target.value))}
+                            className="w-full accent-cyan-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Noise Reduction Threshold Slider */}
+                      <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-slate-300 font-bold">Spatial Noise Reduction</span>
+                          <span className="font-mono text-purple-400 font-bold">{aiDenoiseThreshold}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="40"
+                          step="2"
+                          value={aiDenoiseThreshold}
+                          onChange={(e) => setAiDenoiseThreshold(parseInt(e.target.value))}
+                          className="w-full accent-purple-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
