@@ -21,6 +21,7 @@ import {
   Save,
   Moon,
   Info,
+  History,
 } from 'lucide-react';
 import {
   VoiceNavState,
@@ -37,9 +38,14 @@ import {
 interface VoiceNavigationOverlayProps {
   onOpenAdminModal?: () => void;
   onNavigateTab?: (tab: any) => void;
+  onOpenVoiceHistory?: () => void;
 }
 
-export const VoiceNavigationOverlay: React.FC<VoiceNavigationOverlayProps> = () => {
+export const VoiceNavigationOverlay: React.FC<VoiceNavigationOverlayProps> = ({
+  onOpenAdminModal,
+  onNavigateTab,
+  onOpenVoiceHistory,
+}) => {
   const [voiceState, setVoiceState] = useState<VoiceNavState>({
     isSupported: true,
     isListening: false,
@@ -118,6 +124,21 @@ export const VoiceNavigationOverlay: React.FC<VoiceNavigationOverlayProps> = () 
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onOpenVoiceHistory) {
+                      onOpenVoiceHistory();
+                    } else {
+                      window.dispatchEvent(new CustomEvent('app:open-voice-history'));
+                    }
+                  }}
+                  title="Open Voice Command History & Transcripts"
+                  className="p-1.5 rounded-lg border border-indigo-500/40 bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 hover:text-white text-xs transition-colors flex items-center gap-1"
+                >
+                  <History className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline text-[10px] font-bold">History</span>
+                </button>
                 <button
                   type="button"
                   onClick={toggleVoiceFeedback}
@@ -332,6 +353,23 @@ export const VoiceNavigationOverlay: React.FC<VoiceNavigationOverlayProps> = () 
           >
             <Clapperboard className="w-2.5 h-2.5" />
             <span>Film</span>
+          </button>
+
+          {/* Quick Trigger Voice History direct button */}
+          <button
+            type="button"
+            onClick={() => {
+              if (onOpenVoiceHistory) {
+                onOpenVoiceHistory();
+              } else {
+                window.dispatchEvent(new CustomEvent('app:open-voice-history'));
+              }
+            }}
+            title="Open Voice Command History & Transcripts"
+            className="hidden sm:flex px-2 py-1 rounded-full bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/50 text-cyan-300 text-[10px] font-bold items-center gap-1 transition-colors"
+          >
+            <History className="w-2.5 h-2.5" />
+            <span>History</span>
           </button>
 
           {/* Toggle Expand / Collapse button */}

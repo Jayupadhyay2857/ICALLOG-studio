@@ -40,7 +40,9 @@ import { CookieConsentModal } from './components/CookieConsentModal.tsx';
 import { AutoSaveWarningNotification } from './components/AutoSaveWarningNotification.tsx';
 import { OfflineStatusBanner } from './components/OfflineStatusBanner.tsx';
 import { VoiceNavigationOverlay } from './components/VoiceNavigationOverlay.tsx';
+import { VoiceNavigationHistorySidebar } from './components/VoiceNavigationHistorySidebar.tsx';
 import { OmniEnhanceModal } from './components/OmniEnhanceModal.tsx';
+import { GlobalSearchModal } from './components/GlobalSearchModal.tsx';
 import { LanguageProvider } from './context/LanguageContext.tsx';
 import { syncUserState, initOfflineSyncListeners } from './lib/offlineSync.ts';
 import { AutoDubbingStudio } from './components/AutoDubbingStudio.tsx';
@@ -124,6 +126,61 @@ export default function App() {
   const [isCookieModalOpen, setIsCookieModalOpen] = useState(false);
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const [isOmniEnhanceOpen, setIsOmniEnhanceOpen] = useState(false);
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
+  const [isVoiceHistoryOpen, setIsVoiceHistoryOpen] = useState(false);
+
+  // Global Keyboard Shortcuts (Ctrl+K / Cmd+K / Slash key) & Event Listener for Spotlight Search & Voice History (Alt+V / Ctrl+Shift+V)
+  useEffect(() => {
+    const handleGlobalKeys = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInput =
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.isContentEditable;
+
+      // Alt+V or Ctrl+Shift+V or Cmd+Shift+V: Toggle Voice Navigation History Sidebar
+      if (
+        (e.altKey && (e.key.toLowerCase() === 'v' || e.code === 'KeyV')) ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key.toLowerCase() === 'v' || e.code === 'KeyV'))
+      ) {
+        e.preventDefault();
+        setIsVoiceHistoryOpen((prev) => !prev);
+        return;
+      }
+
+      // Ctrl+K or Cmd+K
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsGlobalSearchOpen((prev) => !prev);
+        return;
+      }
+
+      // '/' slash trigger when outside any text input
+      if (e.key === '/' && !isInput && !isGlobalSearchOpen) {
+        e.preventDefault();
+        setIsGlobalSearchOpen(true);
+        return;
+      }
+    };
+
+    const handleOpenSearchCustomEvent = () => {
+      setIsGlobalSearchOpen(true);
+    };
+
+    const handleOpenVoiceHistoryCustomEvent = () => {
+      setIsVoiceHistoryOpen(true);
+    };
+
+    window.addEventListener('keydown', handleGlobalKeys);
+    window.addEventListener('app:open-global-search', handleOpenSearchCustomEvent);
+    window.addEventListener('app:open-voice-history', handleOpenVoiceHistoryCustomEvent);
+
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeys);
+      window.removeEventListener('app:open-global-search', handleOpenSearchCustomEvent);
+      window.removeEventListener('app:open-voice-history', handleOpenVoiceHistoryCustomEvent);
+    };
+  }, [isGlobalSearchOpen, isVoiceHistoryOpen]);
 
   const handleOpenProfileModal = (tab?: ProfileTab) => {
     setProfileInitialTab(tab);
@@ -227,11 +284,18 @@ export default function App() {
       onOpenCookieModal: () => {
         setIsCookieModalOpen(true);
       },
+      onOpenVoiceHistory: () => {
+        setIsVoiceHistoryOpen(true);
+      },
+      onCloseVoiceHistory: () => {
+        setIsVoiceHistoryOpen(false);
+      },
       onCloseAllModals: () => {
         setIsAdminModalOpen(false);
         setIsHistoryModalOpen(false);
         setIsProfileModalOpen(false);
         setIsCookieModalOpen(false);
+        setIsVoiceHistoryOpen(false);
       },
       onToggleDarkMode: () => {
         setIsDarkMode((prev) => !prev);
@@ -338,6 +402,8 @@ export default function App() {
         openProfileModal={(tab) => handleOpenProfileModal(tab)}
         openCookieModal={() => handleOpenProfileModal('cookies')}
         openOmniEnhanceModal={() => setIsOmniEnhanceOpen(true)}
+        openGlobalSearch={() => setIsGlobalSearchOpen(true)}
+        openVoiceHistory={() => setIsVoiceHistoryOpen(true)}
         onSelectSubTab={handleSelectSubTab}
       />
 
@@ -724,6 +790,17 @@ export default function App() {
       <VoiceNavigationOverlay
         onOpenAdminModal={() => setIsAdminModalOpen(true)}
         onNavigateTab={(tab) => handleSelectSubTab(tab, 'docs')}
+        onOpenVoiceHistory={() => setIsVoiceHistoryOpen(true)}
+      />
+
+      {/* Voice Navigation History & Command Re-execution Slide-over Sidebar (Alt+V / Ctrl+Shift+V) */}
+      <VoiceNavigationHistorySidebar
+        isOpen={isVoiceHistoryOpen}
+        onClose={() => setIsVoiceHistoryOpen(false)}
+        onNavigateTab={(tab, subTab) => handleSelectSubTab(tab, subTab || 'docs')}
+        onOpenAdminModal={() => setIsAdminModalOpen(true)}
+        onOpenProfileModal={handleOpenProfileModal}
+        onNotify={notify}
       />
 
       {/* Omni Enhance AI Universal Multi-Modal Prompt Booster Modal */}
@@ -733,6 +810,21 @@ export default function App() {
         user={user}
         onNavigateToStudio={handleNavigateFromOmni}
         onNotify={notify}
+      />
+
+      {/* Global Spotlight Search & Studio Navigator Modal (Ctrl+K / Cmd+K / Slash) */}
+      <GlobalSearchModal
+        isOpen={isGlobalSearchOpen}
+        onClose={() => setIsGlobalSearchOpen(false)}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        onSelectSubTab={handleSelectSubTab}
+        openAdminModal={() => setIsAdminModalOpen(true)}
+        openHistoryModal={() => setIsHistoryModalOpen(true)}
+        openProfileModal={handleOpenProfileModal}
+        openOmniEnhanceModal={() => setIsOmniEnhanceOpen(true)}
+        openVoiceHistory={() => setIsVoiceHistoryOpen(true)}
+        user={user}
       />
 
       {/* Floating Toast Notification Stack */}

@@ -50,7 +50,10 @@ import {
   CheckCircle2,
   Edit3,
   Keyboard,
+  PenTool,
 } from 'lucide-react';
+import { CameraAnnotationLayer } from './CameraAnnotationLayer.tsx';
+import { studioRealtime } from '../lib/studioRealtime.ts';
 import {
   ActiveTab,
   UserProfile,
@@ -223,8 +226,9 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
   const [isVaultGalleryOpen, setIsVaultGalleryOpen] = useState<boolean>(false);
   const [isScriptLibraryModalOpen, setIsScriptLibraryModalOpen] = useState<boolean>(false);
   const [isHotkeysModalOpen, setIsHotkeysModalOpen] = useState<boolean>(false);
+  const [annotationsEnabled, setAnnotationsEnabled] = useState<boolean>(true);
   const [activeSettingsTab, setActiveSettingsTab] = useState<
-    'lut' | 'virtual_bg' | 'studio_lighting' | 'zoom' | 'grid' | 'prompter' | 'script_library' | 'adjust' | 'gestures' | 'presets' | 'sync'
+    'lut' | 'virtual_bg' | 'studio_lighting' | 'zoom' | 'grid' | 'prompter' | 'script_library' | 'adjust' | 'gestures' | 'presets' | 'sync' | 'annotations'
   >('lut');
 
   // Global Auto-Sync (Presentation Safe Local-Only vs Real-Time Cloud Replication)
@@ -329,10 +333,17 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
   const [voiceHelpModalOpen, setVoiceHelpModalOpen] = useState<boolean>(false);
   const recognitionRef = useRef<any>(null);
 
-  // Load Vault Items, Presets & IndexedDB Teleprompter Scripts on Mount
+  // Load Vault Items, Presets, Realtime Studio & IndexedDB Teleprompter Scripts on Mount
   useEffect(() => {
     setVaultItems(getVaultItems());
     setSavedPresets(getSavedPresets());
+
+    // Connect to Studio Realtime WebSocket Server
+    studioRealtime.init('main_studio', {
+      id: user.id || 'presenter_1',
+      name: user.name || 'Master Presenter',
+      color: '#06b6d4',
+    });
 
     // Load Scripts from IndexedDB (with fallback)
     setIsScriptIdbLoading(true);
@@ -2481,7 +2492,28 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
         return;
       }
 
-      // 8. Spacebar: Quick Teleprompter Play/Pause when outside active text editing
+      // 8. Alt+A / Ctrl+Shift+A: Toggle Real-time Collaborative Annotation Layer
+      if (
+        (e.altKey && (e.key === 'a' || e.key === 'A')) ||
+        (isCtrlOrMeta && e.shiftKey && (e.key === 'a' || e.key === 'A'))
+      ) {
+        e.preventDefault();
+        setAnnotationsEnabled((prev) => {
+          const next = !prev;
+          playCameraSound('beep');
+          onNotify(
+            next ? 'Annotations Layer ON ✏️' : 'Annotations Layer OFF',
+            next
+              ? 'Collaborative drawing & sticky notes activated (Alt+A).'
+              : 'Annotation layer hidden (Alt+A).',
+            next ? 'success' : 'info'
+          );
+          return next;
+        });
+        return;
+      }
+
+      // 9. Spacebar: Quick Teleprompter Play/Pause when outside active text editing
       if (e.code === 'Space' && !isInputFocused && teleprompterOpen) {
         e.preventDefault();
         setTeleprompterIsScrolling((prev) => {
@@ -2496,7 +2528,7 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
         return;
       }
 
-      // 9. Escape: Close Modals
+      // 10. Escape: Close Modals
       if (e.key === 'Escape') {
         if (isHotkeysModalOpen) {
           setIsHotkeysModalOpen(false);
@@ -2528,6 +2560,7 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
     isHotkeysModalOpen,
     isScriptLibraryModalOpen,
     isVaultGalleryOpen,
+    annotationsEnabled,
     onNotify,
   ]);
 
@@ -2669,9 +2702,32 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
           {/* Quick Header Actions */}
           <div className="flex items-center gap-2">
             <button
+              type="button"
+              onClick={() => {
+                const next = !annotationsEnabled;
+                setAnnotationsEnabled(next);
+                playCameraSound('beep');
+                onNotify(
+                  next ? 'Annotations Layer ON ✏️' : 'Annotations Layer OFF',
+                  next ? 'Real-time collaborative drawing & sticky notes activated.' : 'Annotation layer hidden.',
+                  next ? 'success' : 'info'
+                );
+              }}
+              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 shadow-sm transition-all ${
+                annotationsEnabled
+                  ? 'bg-gradient-to-r from-cyan-600 to-indigo-600 text-white border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.4)]'
+                  : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
+              }`}
+              title="Toggle Real-time Collaborative Annotation Layer (Shortcut: Alt+A)"
+            >
+              <PenTool className="w-3.5 h-3.5 text-cyan-300" />
+              <span>{annotationsEnabled ? 'Annotate ON' : 'Annotate'}</span>
+            </button>
+
+            <button
               onClick={() => setIsHotkeysModalOpen(true)}
               className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/30 font-bold flex items-center gap-1.5 shadow-sm"
-              title="Presentation Keyboard Hotkeys (Ctrl+S, Ctrl+P, Ctrl+R, etc.)"
+              title="Presentation Keyboard Hotkeys (Ctrl+S, Ctrl+P, Ctrl+R, Alt+A, etc.)"
             >
               <Keyboard className="w-3.5 h-3.5 text-amber-400" />
               <span className="hidden sm:inline">Hotkeys</span>
@@ -3258,6 +3314,15 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Real-time Collaborative Annotation & Sticky Notes Layer */}
+              <CameraAnnotationLayer
+                roomId="main_studio"
+                isRecording={isRecordingVideo}
+                enabled={annotationsEnabled}
+                onToggleEnabled={() => setAnnotationsEnabled(!annotationsEnabled)}
+                onNotify={onNotify}
+              />
             </div>
 
             {/* FLOATING ACTION SHUTTER & HARDWARE CONTROLS BAR */}
@@ -3440,6 +3505,12 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                   className={`pb-1 font-bold transition-colors ${activeSettingsTab === 'script_library' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-white'}`}
                 >
                   Script DB 📚
+                </button>
+                <button
+                  onClick={() => setActiveSettingsTab('annotations')}
+                  className={`pb-1 font-bold transition-colors ${activeSettingsTab === 'annotations' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-white'}`}
+                >
+                  Collab Draw ✏️
                 </button>
                 <button
                   onClick={() => setActiveSettingsTab('presets')}
@@ -5287,6 +5358,178 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                 </div>
               )}
 
+              {/* TAB: REAL-TIME COLLABORATIVE ANNOTATION & STICKY NOTES */}
+              {activeSettingsTab === 'annotations' && (
+                <div className="space-y-3 text-xs">
+                  {/* Master Collaboration Engine Card */}
+                  <div className="p-3 rounded-2xl bg-gradient-to-r from-slate-900 via-cyan-950/80 to-slate-900 border border-cyan-500/40 space-y-2.5 shadow-xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                          <PenTool className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white font-['Syne'] flex items-center gap-2">
+                            <span>Collaborative Annotation</span>
+                            <span className="text-[9px] px-1.5 py-0.2 rounded font-mono bg-cyan-950 text-cyan-300 border border-cyan-500/30 font-bold">
+                              WebSocket Live
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            Draw, laser point & sticky notes on live video feed
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !annotationsEnabled;
+                          setAnnotationsEnabled(next);
+                          playCameraSound('beep');
+                          onNotify(
+                            next ? 'Annotations Layer ON ✏️' : 'Annotations Layer OFF',
+                            next ? 'Real-time collaborative drawing enabled.' : 'Annotations hidden.',
+                            next ? 'success' : 'info'
+                          );
+                        }}
+                        className={`px-3 py-1.5 rounded-xl font-bold text-[10px] transition-all flex items-center gap-1.5 ${
+                          annotationsEnabled
+                            ? 'bg-gradient-to-r from-cyan-500 to-indigo-600 text-white shadow-md'
+                            : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800'
+                        }`}
+                      >
+                        <span>{annotationsEnabled ? 'ON' : 'OFF'}</span>
+                      </button>
+                    </div>
+
+                    {/* Live Room & Sync Engine Info */}
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-slate-950/80 border border-slate-800 text-[10px]">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        <span className="text-slate-300 font-bold">Session Channel:</span>
+                        <span className="font-mono text-cyan-400">main_studio</span>
+                      </div>
+                      <span className="font-mono text-indigo-300 font-bold">
+                        ⚡ Real-Time Sync
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Collaborative Features Quick Actions */}
+                  <div className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2.5">
+                    <div className="font-bold text-slate-300 text-[11px] flex items-center justify-between">
+                      <span>🎨 Quick Sticky Notes</span>
+                      <span className="text-[10px] text-slate-500 font-mono">Draggable Over Video</span>
+                    </div>
+
+                    <p className="text-[10px] text-slate-400">
+                      Add instant sticky notes with key discussion topics or presentation bullet points on the camera feed visible to all session peers.
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const user = studioRealtime.getCurrentUser();
+                          const note = {
+                            id: `sticky_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+                            userId: user.id,
+                            userName: user.name,
+                            userColor: user.color,
+                            x: 40 + Math.random() * 15,
+                            y: 25 + Math.random() * 15,
+                            text: '💡 Live Pitch Note / Highlight...',
+                            color: '#06b6d4',
+                            timestamp: Date.now(),
+                            pinned: false,
+                          };
+                          studioRealtime.addStickyNote(note);
+                          onNotify('Sticky Note Added 📌', 'Pinned collaborative note on camera feed.', 'success');
+                        }}
+                        className="p-2 rounded-xl bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-500/40 text-cyan-200 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Cyan Sticky</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const user = studioRealtime.getCurrentUser();
+                          const note = {
+                            id: `sticky_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+                            userId: user.id,
+                            userName: user.name,
+                            userColor: user.color,
+                            x: 40 + Math.random() * 15,
+                            y: 25 + Math.random() * 15,
+                            text: '⭐ Critical Key Point / Action Item...',
+                            color: '#eab308',
+                            timestamp: Date.now(),
+                            pinned: false,
+                          };
+                          studioRealtime.addStickyNote(note);
+                          onNotify('Sticky Note Added 📌', 'Pinned amber collaborative note on camera feed.', 'success');
+                        }}
+                        className="p-2 rounded-xl bg-amber-950/60 hover:bg-amber-900/80 border border-amber-500/40 text-amber-200 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Amber Sticky</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          studioRealtime.undoStroke();
+                          onNotify('Undo Stroke', 'Removed previous drawing stroke.', 'info');
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 font-semibold flex items-center gap-1 transition-colors"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Undo Stroke</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          studioRealtime.clearAnnotations(true);
+                          onNotify('Annotations Cleared', 'Removed all live whiteboard strokes.', 'info');
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-950 hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 border border-slate-800 font-semibold flex items-center gap-1 transition-colors"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Clear Strokes</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Shortcuts Card */}
+                  <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80 space-y-1.5 text-[10px] text-slate-400">
+                    <div className="font-bold text-slate-300 flex items-center gap-1.5">
+                      <Keyboard className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Presenter Shortcuts</span>
+                    </div>
+                    <div className="space-y-1 font-mono text-[9px]">
+                      <div className="flex items-center justify-between">
+                        <span>Toggle Annotations</span>
+                        <span className="px-1.5 py-0.2 rounded bg-slate-950 border border-slate-700 text-cyan-300">Alt + A</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Teleprompter Play/Pause</span>
+                        <span className="px-1.5 py-0.2 rounded bg-slate-950 border border-slate-700 text-cyan-300">Ctrl + P</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Record Video</span>
+                        <span className="px-1.5 py-0.2 rounded bg-slate-950 border border-slate-700 text-rose-300">Ctrl + R</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* TAB: PRO PRESET LIBRARY PANEL */}
               {activeSettingsTab === 'presets' && (
                 <div className="space-y-3 text-xs">
@@ -6473,6 +6716,13 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                   desc: 'Speeds up the teleprompter scrolling rate by 0.5x increments.',
                   tag: 'Speed Tuning',
                   color: 'text-amber-400 border-amber-500/30',
+                },
+                {
+                  keys: ['Alt', 'A'],
+                  title: 'Toggle Collaborative Annotations',
+                  desc: 'Shows or hides the live video drawing canvas and pinned sticky notes for all participants.',
+                  tag: 'Collab Whiteboard',
+                  color: 'text-cyan-400 border-cyan-500/30',
                 },
                 {
                   keys: ['Space'],

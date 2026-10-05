@@ -1,7 +1,9 @@
 import express, { Request, Response, NextFunction } from 'express';
+import http from 'http';
 import path from 'path';
 import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
+import { setupStudioWebSocketServer } from './server/studioWs.ts';
 import {
   encryptAes256,
   decryptAes256,
@@ -1269,9 +1271,14 @@ app.get('/api/tasks', (req: Request, res: Response) => {
 // Vite Integration (Dev) & Static Serving (Prod)
 // ====================================================================
 async function startServer() {
+  const httpServer = http.createServer(app);
+
+  // Initialize Real-Time Collaborative Annotation & Sentiment WebSocket Server
+  setupStudioWebSocketServer(httpServer);
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, hmr: { server: httpServer } },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -1283,8 +1290,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[iCALLOG V18] Server initialized on http://0.0.0.0:${PORT}`);
+  httpServer.listen(PORT, '0.0.0.0', () => {
+    console.log(`[iCALLOG V18] Server initialized on http://0.0.0.0:${PORT} (HTTP & WebSockets)`);
   });
 }
 

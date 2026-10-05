@@ -282,3 +282,78 @@ export interface TeleprompterScript {
   updatedAt: string;
   isDefault?: boolean;
 }
+
+// Collaborative Live Annotation & Sentiment Teleprompter Types
+export interface AnnotationPoint {
+  x: number; // 0 to 1 normalized
+  y: number; // 0 to 1 normalized
+}
+
+export type AnnotationTool = 'pen' | 'highlighter' | 'laser' | 'arrow' | 'rect' | 'circle';
+
+export interface AnnotationStroke {
+  id: string;
+  userId: string;
+  userName: string;
+  userColor: string;
+  tool: AnnotationTool;
+  color: string;
+  width: number;
+  opacity: number;
+  points: AnnotationPoint[];
+  timestamp: number;
+}
+
+export interface StickyNote {
+  id: string;
+  userId: string;
+  userName: string;
+  userColor: string;
+  x: number; // percentage 0 to 100
+  y: number; // percentage 0 to 100
+  text: string;
+  color: string;
+  timestamp: number;
+  pinned?: boolean;
+}
+
+export interface ParticipantCursor {
+  userId: string;
+  userName: string;
+  userColor: string;
+  x: number;
+  y: number;
+  lastActive: number;
+  isDrawing?: boolean;
+}
+
+export type EmotionState =
+  | 'confident'
+  | 'hesitant'
+  | 'joyful'
+  | 'energetic'
+  | 'calm'
+  | 'anxious'
+  | 'neutral'
+  | 'fatigued';
+
+export interface SentimentTelemetry {
+  emotion: EmotionState;
+  confidenceScore: number;
+  sentimentIndex: number;
+  valence: number;
+  arousal: number;
+  speechPaceModifier: number;
+  recommendedSpeed: number;
+  faceTracked: boolean;
+  timestamp: number;
+  feedbackAdvice?: string;
+  rawSignals?: {
+    smile: number;
+    browFurrow: number;
+    eyeContact: number;
+    headStability: number;
+    speechCadence: number;
+  };
+}
+

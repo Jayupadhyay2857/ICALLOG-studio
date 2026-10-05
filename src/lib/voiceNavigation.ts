@@ -22,10 +22,167 @@ export type VoiceActionType =
   | { type: 'OPEN_PROFILE_MODAL'; initialTab?: ProfileTab; label: string }
   | { type: 'OPEN_HISTORY_MODAL'; label: string }
   | { type: 'OPEN_COOKIE_MODAL'; label: string }
+  | { type: 'OPEN_VOICE_HISTORY'; label: string }
+  | { type: 'CLOSE_VOICE_HISTORY'; label: string }
   | { type: 'CLOSE_ALL_MODALS'; label: string }
   | { type: 'TOGGLE_DARK_MODE'; label: string }
   | { type: 'SAVE_WORK'; label: string }
   | { type: 'EXTEND_SESSION'; label: string };
+
+export interface VoiceHistoryEntry {
+  id: string;
+  transcript: string;
+  action: VoiceActionType | null;
+  matchedLabel: string | null;
+  timestamp: number;
+  confidence?: number;
+  status: 'executed' | 'unrecognized' | 'failed';
+  language?: string;
+}
+
+const VOICE_HISTORY_KEY = 'icallog_voice_history_v1';
+let historyCache: VoiceHistoryEntry[] | null = null;
+const historyListeners = new Set<(history: VoiceHistoryEntry[]) => void>();
+
+export function getVoiceCommandHistory(): VoiceHistoryEntry[] {
+  if (historyCache) return [...historyCache];
+  if (typeof window === 'undefined') return [];
+  try {
+    const stored = localStorage.getItem(VOICE_HISTORY_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        historyCache = parsed;
+        return [...parsed];
+      }
+    }
+  } catch {
+    // fallback
+  }
+
+  // Sample historical records
+  const defaultHistory: VoiceHistoryEntry[] = [
+    {
+      id: 'vh_sample_01',
+      transcript: 'Go to Film Studio',
+      action: { type: 'NAVIGATE_TAB', tab: 'film_studio', label: 'Navigating to Film Studio' },
+      matchedLabel: 'Navigating to Film Studio',
+      timestamp: Date.now() - 1000 * 60 * 4,
+      confidence: 0.98,
+      status: 'executed',
+      language: 'en-US',
+    },
+    {
+      id: 'vh_sample_02',
+      transcript: 'Open Admin Modal',
+      action: { type: 'OPEN_ADMIN_MODAL', label: 'Opening Admin Modal' },
+      matchedLabel: 'Opening Admin Modal',
+      timestamp: Date.now() - 1000 * 60 * 15,
+      confidence: 0.95,
+      status: 'executed',
+      language: 'en-US',
+    },
+    {
+      id: 'vh_sample_03',
+      transcript: 'Save Work',
+      action: { type: 'SAVE_WORK', label: 'Executing Auto-Save' },
+      matchedLabel: 'Executing Auto-Save',
+      timestamp: Date.now() - 1000 * 60 * 35,
+      confidence: 0.99,
+      status: 'executed',
+      language: 'en-US',
+    },
+  ];
+
+  historyCache = defaultHistory;
+  return [...defaultHistory];
+}
+
+export function addVoiceCommandHistoryEntry(
+  entry: Omit<VoiceHistoryEntry, 'id'> & { id?: string }
+): VoiceHistoryEntry {
+  const current = getVoiceCommandHistory();
+  const newEntry: VoiceHistoryEntry = {
+    id: entry.id || `vh_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+    transcript: entry.transcript,
+    action: entry.action,
+    matchedLabel: entry.matchedLabel,
+    timestamp: entry.timestamp || Date.now(),
+    confidence: entry.confidence,
+    status: entry.status,
+    language: entry.language || navState.preferences.language,
+  };
+
+  const updated = [newEntry, ...current].slice(0, 100);
+  historyCache = updated;
+  try {
+    localStorage.setItem(VOICE_HISTORY_KEY, JSON.stringify(updated));
+  } catch {
+    // ignore
+  }
+
+  historyListeners.forEach((fn) => fn([...updated]));
+  return newEntry;
+}
+
+export function clearVoiceCommandHistory(): void {
+  historyCache = [];
+  try {
+    localStorage.removeItem(VOICE_HISTORY_KEY);
+  } catch {
+    // ignore
+  }
+  historyListeners.forEach((fn) => fn([]));
+}
+
+export function deleteVoiceCommandHistoryItem(id: string): void {
+  const current = getVoiceCommandHistory();
+  const updated = current.filter((h) => h.id !== id);
+  historyCache = updated;
+  try {
+    localStorage.setItem(VOICE_HISTORY_KEY, JSON.stringify(updated));
+  } catch {
+    // ignore
+  }
+  historyListeners.forEach((fn) => fn([...updated]));
+}
+
+export function subscribeVoiceHistory(fn: (history: VoiceHistoryEntry[]) => void): () => void {
+  historyListeners.add(fn);
+  fn(getVoiceCommandHistory());
+  return () => {
+    historyListeners.delete(fn);
+  };
+}
+
+export function reExecuteVoiceCommand(entry: VoiceHistoryEntry | string): boolean {
+  const text = typeof entry === 'string' ? entry : entry.transcript;
+  const action = typeof entry === 'object' && entry.action ? entry.action : parseVoiceCommand(text);
+
+  if (action) {
+    const success = executeVoiceAction(action);
+    addVoiceCommandHistoryEntry({
+      transcript: text,
+      action,
+      matchedLabel: action.label,
+      timestamp: Date.now(),
+      confidence: 1.0,
+      status: success ? 'executed' : 'failed',
+    });
+    return success;
+  } else {
+    addVoiceCommandHistoryEntry({
+      transcript: text,
+      action: null,
+      matchedLabel: null,
+      timestamp: Date.now(),
+      confidence: 0.5,
+      status: 'unrecognized',
+    });
+    speakFeedback(`Command "${text}" was not recognized.`);
+    return false;
+  }
+}
 
 export interface VoicePreferences {
   micSensitivity: number; // 0 to 100 (percentage). 0-35% = noisy room/strict threshold, 36-70% = balanced, 71-100% = quiet/whisper
@@ -72,6 +229,8 @@ export interface VoiceNavigationHandlers {
   onOpenProfileModal: (tab?: ProfileTab) => void;
   onOpenHistoryModal: () => void;
   onOpenCookieModal: () => void;
+  onOpenVoiceHistory?: () => void;
+  onCloseVoiceHistory?: () => void;
   onCloseAllModals: () => void;
   onToggleDarkMode: () => void;
   onSaveWork: () => void;
@@ -81,6 +240,7 @@ export interface VoiceNavigationHandlers {
 
 // Sample quick commands for UI suggestions
 export const VOICE_COMMAND_EXAMPLES = [
+  { phrase: 'Open Voice History', desc: 'Opens Voice Command Transcript & Re-execution Log' },
   { phrase: 'Open Admin Modal', desc: 'Opens the Admin Override & RBAC Panel' },
   { phrase: 'Open Voice Preferences', desc: 'Opens Microphone Sensitivity & Voice Settings' },
   { phrase: 'Go to Film Studio', desc: 'Opens Cinema Director & Script Writing' },
@@ -402,6 +562,26 @@ export function parseVoiceCommand(rawText: string): VoiceActionType | null {
   }
 
   if (
+    text.includes('open voice history') ||
+    text.includes('voice history') ||
+    text.includes('voice command history') ||
+    text.includes('command history') ||
+    text.includes('voice transcript') ||
+    text.includes('voice log') ||
+    text.includes('transcript log')
+  ) {
+    return { type: 'OPEN_VOICE_HISTORY', label: 'Opening Voice Navigation History' };
+  }
+
+  if (
+    text.includes('close voice history') ||
+    text.includes('exit voice history') ||
+    text.includes('hide voice history')
+  ) {
+    return { type: 'CLOSE_VOICE_HISTORY', label: 'Closing Voice Navigation History' };
+  }
+
+  if (
     text.includes('open history modal') ||
     text.includes('open history') ||
     text.includes('version history') ||
@@ -686,6 +866,20 @@ export function executeVoiceAction(action: VoiceActionType): boolean {
       currentHandlers.onNotify('Voice Command', action.label, 'success');
       return true;
 
+    case 'OPEN_VOICE_HISTORY':
+      if (currentHandlers.onOpenVoiceHistory) {
+        currentHandlers.onOpenVoiceHistory();
+        currentHandlers.onNotify('Voice Command', action.label, 'info');
+      }
+      return true;
+
+    case 'CLOSE_VOICE_HISTORY':
+      if (currentHandlers.onCloseVoiceHistory) {
+        currentHandlers.onCloseVoiceHistory();
+        currentHandlers.onNotify('Voice Command', action.label, 'info');
+      }
+      return true;
+
     case 'OPEN_HISTORY_MODAL':
       currentHandlers.onOpenHistoryModal();
       currentHandlers.onNotify('Voice Command', action.label, 'info');
@@ -804,17 +998,35 @@ export function startVoiceRecognition(continuous = false): boolean {
 
       navState.interimTranscript = interim;
       if (finalTranscript.trim()) {
-        navState.transcript = finalTranscript.trim();
+        const cleaned = finalTranscript.trim();
+        navState.transcript = cleaned;
         notifyListeners();
 
         // Attempt command parse
-        const action = parseVoiceCommand(finalTranscript);
+        const action = parseVoiceCommand(cleaned);
         if (action) {
-          executeVoiceAction(action);
+          const success = executeVoiceAction(action);
+          addVoiceCommandHistoryEntry({
+            transcript: cleaned,
+            action,
+            matchedLabel: action.label,
+            timestamp: Date.now(),
+            confidence: lastConf ?? 0.95,
+            status: success ? 'executed' : 'failed',
+          });
           // If not continuous, stop after successful command
           if (!effectiveContinuous) {
             stopVoiceRecognition();
           }
+        } else {
+          addVoiceCommandHistoryEntry({
+            transcript: cleaned,
+            action: null,
+            matchedLabel: null,
+            timestamp: Date.now(),
+            confidence: lastConf ?? 0.7,
+            status: 'unrecognized',
+          });
         }
       } else {
         notifyListeners();

@@ -81,6 +81,8 @@ interface NavbarProps {
   openProfileModal: (tab?: ProfileTab) => void;
   openCookieModal?: () => void;
   openOmniEnhanceModal?: () => void;
+  openGlobalSearch?: () => void;
+  openVoiceHistory?: () => void;
   onSelectSubTab?: (tab: ActiveTab, subTab: string) => void;
 }
 
@@ -95,6 +97,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   openProfileModal,
   openCookieModal,
   openOmniEnhanceModal,
+  openGlobalSearch,
+  openVoiceHistory,
   onSelectSubTab,
 }) => {
   const { t, currentLangOption } = useLanguage();
@@ -1096,15 +1100,19 @@ Thank you for building with AI Studio!
             <button
               type="button"
               onClick={() => {
-                setIsSearchOpen(true);
-                setTimeout(() => modalInputRef.current?.focus(), 50);
+                if (openGlobalSearch) {
+                  openGlobalSearch();
+                } else {
+                  setIsSearchOpen(true);
+                  setTimeout(() => modalInputRef.current?.focus(), 50);
+                }
               }}
               className="flex items-center justify-between gap-3 px-4 py-2 rounded-2xl bg-slate-900/90 border border-slate-700/70 hover:border-cyan-500/80 text-slate-300 text-xs sm:text-sm transition-all group shadow-md w-full cursor-pointer hover:shadow-[0_0_20px_rgba(6,182,212,0.15)]"
             >
               <div className="flex items-center gap-2.5 min-w-0">
                 <Search className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform shrink-0" />
                 <span className="text-slate-300 text-xs sm:text-sm truncate font-medium">
-                  Search active projects, AI tools, documentation...
+                  Search all 34+ AI studios, 3D engines, film, audio, office tools (Ctrl+K)...
                 </span>
               </div>
               <div className="flex items-center gap-1 shrink-0">
@@ -1120,8 +1128,12 @@ Thank you for building with AI Studio!
             {/* Mobile Search Button */}
             <button
               onClick={() => {
-                setIsSearchOpen(true);
-                setTimeout(() => modalInputRef.current?.focus(), 50);
+                if (openGlobalSearch) {
+                  openGlobalSearch();
+                } else {
+                  setIsSearchOpen(true);
+                  setTimeout(() => modalInputRef.current?.focus(), 50);
+                }
               }}
               title="Global Search (Ctrl+K)"
               className="md:hidden p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-cyan-400 hover:bg-slate-800 hover:text-white transition-all flex items-center justify-center"
