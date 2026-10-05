@@ -58,6 +58,8 @@ import { CollabWhiteboardTimelineStudio } from './components/CollabWhiteboardTim
 import { PodcastStudio } from './components/PodcastStudio.tsx';
 import { QuantumDirectorStudio } from './components/QuantumDirectorStudio.tsx';
 import { ExoplanetStudio } from './components/ExoplanetStudio.tsx';
+import { HoloSculptStudio } from './components/HoloSculptStudio.tsx';
+import { VoiceCloneStudio } from './components/VoiceCloneStudio.tsx';
 import { getUserStateFromIDB } from './lib/offlineIndexedDB.ts';
 import { registerVoiceHandlers } from './lib/voiceNavigation.ts';
 import { executeAutoSave, extendSessionToken } from './lib/sessionManager.ts';
@@ -432,6 +434,20 @@ export default function App() {
         )}
         {activeTab === 'exoplanet_world' && (
           <ExoplanetStudio
+            user={user}
+            setActiveTab={(tab) => setActiveTab(tab as ActiveTab)}
+            onNotify={notify}
+          />
+        )}
+        {activeTab === 'holo_sculpt_3d' && (
+          <HoloSculptStudio
+            user={user}
+            setActiveTab={(tab) => setActiveTab(tab as ActiveTab)}
+            onNotify={notify}
+          />
+        )}
+        {activeTab === 'voice_clone' && (
+          <VoiceCloneStudio
             user={user}
             setActiveTab={(tab) => setActiveTab(tab as ActiveTab)}
             onNotify={notify}

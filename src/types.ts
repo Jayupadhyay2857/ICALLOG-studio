@@ -9,6 +9,8 @@ export type ActiveTab =
   | 'master_toolkit'
   | 'quantum_director'
   | 'exoplanet_world'
+  | 'holo_sculpt_3d'
+  | 'voice_clone'
   | 'collab_timeline'
   | 'podcast_studio'
   | 'pro_camera'

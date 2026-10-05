@@ -612,8 +612,12 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
     } catch (err) {
       console.warn('Camera access issue:', err);
       setCameraError(
-        'Camera permission was not granted or camera is unavailable. You can also click "Device Camera" below to use your phone/system camera app, or pick a photo from your Gallery.'
+        'Webcam permission restricted in browser iframe. Opening your device camera app directly...'
       );
+      // Fallback: Automatically trigger native device camera app
+      setTimeout(() => {
+        nativeCameraInputRef.current?.click();
+      }, 300);
     }
   };
 
@@ -1829,6 +1833,13 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                         <div className="flex flex-wrap gap-2 pt-1">
                           <button
                             type="button"
+                            onClick={() => window.open('https://ais-dev-z72lknvwt3vejxxrwes3rb-409805687062.asia-southeast1.run.app', '_blank')}
+                            className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-md"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" /> Open Standalone Tab (Unlocks Webcam)
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => nativeCameraInputRef.current?.click()}
                             className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5"
                           >
@@ -2065,16 +2076,26 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                       <div className="flex flex-wrap items-center gap-2 pt-1">
                         <button
                           type="button"
-                          onClick={() => startCamera('user')}
-                          className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:brightness-110 text-white text-xs font-bold shadow-lg shadow-cyan-950/50 transition-transform hover:scale-105"
+                          onClick={() => nativeCameraInputRef.current?.click()}
+                          className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-600 hover:brightness-110 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 transition-transform hover:scale-105 active:scale-95"
+                          title="Open phone/system camera app directly to click photo"
                         >
-                          <span>Open Camera</span>
+                          <Camera className="w-4 h-4 text-slate-950" />
+                          <span>📸 Snap Photo (Device Camera)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => startCamera('user')}
+                          className="px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-cyan-500/40 text-xs font-bold transition-all flex items-center gap-1.5"
+                        >
+                          <span>Live Viewfinder</span>
                         </button>
 
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-2 transition-all"
+                          className="px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all"
                         >
                           <Upload className="w-4 h-4 text-cyan-400" />
                           <span>📁 Upload Gallery</span>

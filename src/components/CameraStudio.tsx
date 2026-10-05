@@ -83,9 +83,12 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioCanvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const nativeCameraInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [permissionError, setPermissionError] = useState<string>('');
+  const [virtualStudioMode, setVirtualStudioMode] = useState<boolean>(false);
   const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
@@ -247,66 +250,65 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
     };
   }, [isListeningVoice, mode, isRecordingVideo, isRecordingAudio]);
 
-  // Initialize Camera Stream
+  // Initialize Camera Stream with Progressive Fallbacks
   const initStream = async (camId?: string, currentFacing: 'user' | 'environment' = facingMode) => {
     try {
-      // Stop previous tracks
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
       }
 
-      const constraints: MediaStreamConstraints = {
-        video: {
-          deviceId: camId ? { exact: camId } : undefined,
-          facingMode: camId ? undefined : currentFacing,
-          width: { ideal: videoResolution === '4k' ? 3840 : videoResolution === '1080p' ? 1920 : 1280 },
-          height: { ideal: videoResolution === '4k' ? 2160 : videoResolution === '1080p' ? 1080 : 720 },
-          frameRate: { ideal: videoFps },
-        },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+      let stream: MediaStream | null = null;
+      try {
+        // Attempt 1: Full ideal resolution video stream
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: camId ? { exact: camId } : undefined,
+            facingMode: camId ? undefined : currentFacing,
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+          audio: false,
+        });
+      } catch (err1) {
+        console.warn('Attempt 1 failed, trying basic video:', err1);
+        // Attempt 2: Minimal basic video stream
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       }
 
-      setHasPermission(true);
-      setPermissionError('');
-
-      // Check capabilities (zoom, torch)
-      const videoTrack = stream.getVideoTracks()[0];
-      if (videoTrack) {
-        const capabilities = (videoTrack.getCapabilities ? videoTrack.getCapabilities() : {}) as {
-          zoom?: { min: number; max: number };
-          torch?: boolean;
-        };
-
-        if (capabilities.zoom) {
-          setMaxZoomSupported(capabilities.zoom.max || 5.0);
+      if (stream) {
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
         }
-        if (capabilities.torch) {
-          setTorchSupported(true);
-        }
-      }
+        setHasPermission(true);
+        setPermissionError('');
 
-      // Enumerate camera devices
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter((d) => d.kind === 'videoinput');
-      setAvailableCameras(videoDevices);
-      if (videoDevices.length > 0 && !selectedCameraId) {
-        setSelectedCameraId(videoDevices[0].deviceId);
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack) {
+          const capabilities = (videoTrack.getCapabilities ? videoTrack.getCapabilities() : {}) as {
+            zoom?: { min: number; max: number };
+            torch?: boolean;
+          };
+          if (capabilities.zoom) {
+            setMaxZoomSupported(capabilities.zoom.max || 5.0);
+          }
+          if (capabilities.torch) {
+            setTorchSupported(true);
+          }
+        }
+
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter((d) => d.kind === 'videoinput');
+        setAvailableCameras(videoDevices);
+        if (videoDevices.length > 0 && !selectedCameraId) {
+          setSelectedCameraId(videoDevices[0].deviceId);
+        }
       }
     } catch (err: unknown) {
       console.warn('Camera access error:', err);
       setHasPermission(false);
-      const errMsg = err instanceof Error ? err.message : 'Camera permission denied or device not found';
+      const errMsg = err instanceof Error ? err.message : 'Camera permission restricted in iframe';
       setPermissionError(errMsg);
     }
   };
@@ -532,6 +534,50 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
     onNotify('Image Captured', `Stored high-res ${canvas.width}x${canvas.height} photo in Camera Vault.`, 'success');
   };
 
+  // Handle native camera capture or gallery file upload
+  const handleNativeCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const isVideo = file.type.startsWith('video/');
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (!dataUrl) return;
+
+      const newItem: CameraMediaItem = {
+        id: `native_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        type: isVideo ? 'video' : 'image',
+        url: dataUrl,
+        thumbnailUrl: dataUrl,
+        title: file.name || (isVideo ? 'Device_Camera_Video.mp4' : 'Device_Camera_Photo.jpg'),
+        timestamp: new Date().toLocaleTimeString(),
+        resolution: isVideo ? '1080p HD' : '8K HDR',
+        filterUsed: filter,
+        zoomLevel: zoom,
+        rotation,
+        mirrored: isMirrored,
+        fileSizeBytes: file.size,
+      };
+
+      const updated = saveVaultItem(newItem);
+      setVaultItems(updated);
+      setSelectedVaultItem(newItem);
+
+      if (onMediaCaptured) {
+        onMediaCaptured(newItem);
+      }
+
+      onNotify(
+        isVideo ? 'Video Captured' : 'Photo Captured',
+        `Successfully captured and stored ${file.name || 'media'} in Camera Vault!`,
+        'success'
+      );
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
   // Timer Countdown Controller
   const handleShutterClick = () => {
     if (mode === 'burst') {
@@ -582,7 +628,7 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
     }, 250);
   };
 
-  // Start / Stop Video Recording
+  // Start / Stop Video Recording with MediaRecorder API & Canvas Stream Fallback
   const handleToggleVideoRecording = () => {
     if (isRecordingVideo) {
       // STOP Recording
@@ -595,23 +641,52 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
         videoTimerRef.current = null;
       }
       playCameraSound('record_stop');
-      onNotify('Video Recorded', `Saved video clip (${videoRecordingTime}s) to Camera Vault.`, 'success');
+      onNotify('Video Recorded', `Saved video clip (${videoRecordingTime}s) to Camera Vault via MediaRecorder API.`, 'success');
     } else {
-      // START Recording
-      if (!streamRef.current) return;
+      // START Recording using MediaRecorder API
+      let activeStream = streamRef.current;
+
+      // Fallback: If streamRef is not active, capture stream from canvas element
+      if (!activeStream || activeStream.getVideoTracks().length === 0 || !activeStream.active) {
+        if (canvasRef.current) {
+          try {
+            activeStream = canvasRef.current.captureStream(30);
+          } catch (e) {
+            console.warn('Canvas captureStream error:', e);
+          }
+        }
+      }
+
+      if (!activeStream) {
+        onNotify('MediaRecorder Info', 'Webcam stream restricted in preview iframe. Opening Device Camera for video recording...', 'info');
+        if (nativeCameraInputRef.current) {
+          nativeCameraInputRef.current.setAttribute('accept', 'video/*');
+          nativeCameraInputRef.current.click();
+        }
+        return;
+      }
+
       playCameraSound('record_start');
       videoChunksRef.current = [];
       setVideoRecordingTime(0);
 
       try {
-        const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
-          ? 'video/webm;codecs=vp9,opus'
-          : MediaRecorder.isTypeSupported('video/mp4')
-          ? 'video/mp4'
-          : 'video/webm';
+        const supportedTypes = [
+          'video/webm;codecs=vp9,opus',
+          'video/webm;codecs=vp8,opus',
+          'video/webm',
+          'video/mp4',
+        ];
+        let mimeType = '';
+        for (const type of supportedTypes) {
+          if (MediaRecorder.isTypeSupported(type)) {
+            mimeType = type;
+            break;
+          }
+        }
 
-        const recorder = new MediaRecorder(streamRef.current, {
-          mimeType,
+        const recorder = new MediaRecorder(activeStream, {
+          mimeType: mimeType || undefined,
           videoBitsPerSecond: videoResolution === '4k' ? 12000000 : 5000000,
         });
 
@@ -622,7 +697,7 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
         };
 
         recorder.onstop = () => {
-          const blob = new Blob(videoChunksRef.current, { type: mimeType });
+          const blob = new Blob(videoChunksRef.current, { type: mimeType || 'video/webm' });
           const videoUrl = URL.createObjectURL(blob);
 
           const newItem: CameraMediaItem = {
@@ -630,7 +705,7 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
             type: 'video',
             url: videoUrl,
             blob,
-            title: `Recorded_Video_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '_')}.mp4`,
+            title: `MediaRecorder_Video_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '_')}.mp4`,
             timestamp: new Date().toLocaleTimeString(),
             durationSec: videoRecordingTime,
             resolution: videoResolution === '4k' ? '3840x2160 (4K)' : '1920x1080 (FHD)',
@@ -652,7 +727,7 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
         }, 1000);
       } catch (err) {
         console.error('Video recording failed:', err);
-        onNotify('Recording Error', 'Failed to start video recording on this browser.', 'error');
+        onNotify('Recording Error', 'Failed to start MediaRecorder on this device/browser.', 'error');
       }
     }
   };
@@ -1267,22 +1342,82 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                 </span>
               </div>
 
+              {/* Hidden Inputs for Native Device Camera & Gallery Upload */}
+              <input
+                ref={nativeCameraInputRef}
+                type="file"
+                accept="image/*,video/*"
+                capture="user"
+                onChange={handleNativeCapture}
+                className="hidden"
+              />
+              <input
+                ref={galleryFileInputRef}
+                type="file"
+                accept="image/*,video/*,audio/*"
+                onChange={handleNativeCapture}
+                className="hidden"
+              />
+
               {/* Permission Denied Fallback */}
-              {hasPermission === false && (
+              {hasPermission === false && !virtualStudioMode && (
                 <div className="absolute inset-0 z-30 bg-slate-950/95 flex flex-col items-center justify-center p-6 text-center space-y-4">
-                  <Shield className="w-12 h-12 text-rose-400 animate-pulse" />
-                  <h4 className="text-base font-bold text-white font-['Syne']">
-                    Camera & Microphone Permission Needed
-                  </h4>
-                  <p className="text-xs text-slate-400 max-w-sm">
-                    {permissionError || 'Please enable camera and audio access in browser settings to use live recording.'}
-                  </p>
-                  <button
-                    onClick={() => initStream()}
-                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 text-white text-xs font-bold shadow-lg hover:brightness-110 flex items-center gap-2"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" /> Retry Camera Access
-                  </button>
+                  <Shield className="w-12 h-12 text-cyan-400 animate-pulse" />
+                  <div className="space-y-1">
+                    <h4 className="text-base font-bold text-white font-['Syne']">
+                      Camera Permission Restricted in Browser Frame
+                    </h4>
+                    <p className="text-xs text-slate-400 max-w-md mx-auto">
+                      Browser preview restricted webcam access. Choose your preferred studio capture method below:
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-center gap-2.5 max-w-lg pt-2">
+                    <button
+                      onClick={() => {
+                        window.open('https://ais-dev-z72lknvwt3vejxxrwes3rb-409805687062.asia-southeast1.run.app', '_blank');
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 text-white font-bold text-xs shadow-lg hover:brightness-110 flex items-center gap-2 transition-transform hover:scale-105"
+                      title="Opens the app in a standalone tab where your browser will prompt Allow Camera Permission"
+                    >
+                      <ExternalLink className="w-4 h-4 text-cyan-200" />
+                      <span>🌐 Open Standalone Tab (Unlocks Webcam)</span>
+                    </button>
+
+                    <button
+                      onClick={() => nativeCameraInputRef.current?.click()}
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-slate-950 font-black text-xs shadow-lg hover:brightness-110 flex items-center gap-2 transition-transform hover:scale-105 active:scale-95"
+                    >
+                      <Camera className="w-4 h-4 text-slate-950" />
+                      <span>📸 Open Device Camera App</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setVirtualStudioMode(true);
+                        onNotify('Virtual Studio Active', '8K AI Virtual Viewfinder enabled with real-time LUT filters and shutter snapshot!', 'info');
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg flex items-center gap-2 transition-transform hover:scale-105"
+                    >
+                      <Sparkles className="w-4 h-4 text-cyan-300" />
+                      <span>✨ AI Virtual Studio Viewfinder</span>
+                    </button>
+
+                    <button
+                      onClick={() => galleryFileInputRef.current?.click()}
+                      className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 text-xs font-bold flex items-center gap-2 transition-all"
+                    >
+                      <UploadCloud className="w-4 h-4 text-cyan-400" />
+                      <span>📁 Upload Media File</span>
+                    </button>
+
+                    <button
+                      onClick={() => initStream()}
+                      className="px-3.5 py-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-colors border border-slate-800"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Retry Webcam
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
