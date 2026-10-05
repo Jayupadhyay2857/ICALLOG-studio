@@ -58,6 +58,7 @@ import {
   deleteVaultItem,
   clearVault,
 } from '../lib/cameraVault.ts';
+import { safeDownloadMedia } from '../lib/downloadHelper.ts';
 
 interface CameraStudioProps {
   user: UserProfile;
@@ -81,10 +82,30 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
   // 1. Camera & Audio Stream State
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const liveCanvasRef = useRef<HTMLCanvasElement>(null);
   const audioCanvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const nativeCameraInputRef = useRef<HTMLInputElement | null>(null);
   const galleryFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Smart Chroma Key & Dynamic WebGL Engine State
+  const [smartChromaEnabled, setSmartChromaEnabled] = useState<boolean>(false);
+  const [keyColorHex, setKeyColorHex] = useState<string>('#00FF00');
+  const [keyTolerance, setKeyTolerance] = useState<number>(35);
+  const [keySmoothness, setKeySmoothness] = useState<number>(15);
+  const [spillSuppression, setSpillSuppression] = useState<number>(30);
+  const [webglTexture, setWebglTexture] = useState<
+    | 'cyber_grid'
+    | 'matrix_rain'
+    | 'starfield_tunnel'
+    | 'plasma_energy'
+    | 'synthwave_sun'
+    | 'aurora_borealis'
+    | 'lava_vortex'
+  >('cyber_grid');
+  const [webglAnimSpeed, setWebglAnimSpeed] = useState<number>(1.0);
+  const [webglIntensity, setWebglIntensity] = useState<number>(1.0);
+  const [detectedColorName, setDetectedColorName] = useState<string>('Green Screen (#00FF00)');
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [permissionError, setPermissionError] = useState<string>('');
@@ -161,6 +182,10 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
   const [chromaSensitivity, setChromaSensitivity] = useState<number>(45); // 10 to 100
   const [customBgUrl, setCustomBgUrl] = useState<string>('');
   const customBgInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Export Format & Auto-Download Trigger State
+  const [exportFormat, setExportFormat] = useState<'webm' | 'mp4'>('mp4');
+  const [autoDownloadOnFinish, setAutoDownloadOnFinish] = useState<boolean>(true);
 
   // Floating Quick Action Effects Toggles
   const [aiDenoiseEnabled, setAiDenoiseEnabled] = useState<boolean>(true);
@@ -426,6 +451,417 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
     }
   };
 
+  // --- SMART CHROMA KEY & DYNAMIC WEBGL ENGINE FUNCTIONS ---
+
+  // 1. Auto-Detect Background Key Color from Webcam Stream Corners
+  const handleAutoDetectKeyColor = () => {
+    const video = videoRef.current;
+    if (!video || video.videoWidth === 0) {
+      onNotify('Auto Detect', 'Camera feed initializing... Please try again in a moment.', 'warning');
+      return;
+    }
+    const sampleCanvas = document.createElement('canvas');
+    sampleCanvas.width = 160;
+    sampleCanvas.height = 90;
+    const sCtx = sampleCanvas.getContext('2d');
+    if (!sCtx) return;
+
+    sCtx.drawImage(video, 0, 0, 160, 90);
+    const imgData = sCtx.getImageData(0, 0, 160, 90);
+    const data = imgData.data;
+
+    let sumR = 0, sumG = 0, sumB = 0, count = 0;
+    const cornerSize = 15;
+
+    for (let y = 0; y < 90; y++) {
+      for (let x = 0; x < 160; x++) {
+        const isTopLeft = x < cornerSize && y < cornerSize;
+        const isTopRight = x > 160 - cornerSize && y < cornerSize;
+        const isBottomLeft = x < cornerSize && y > 90 - cornerSize;
+        const isBottomRight = x > 160 - cornerSize && y > 90 - cornerSize;
+
+        if (isTopLeft || isTopRight || isBottomLeft || isBottomRight) {
+          const idx = (y * 160 + x) * 4;
+          sumR += data[idx];
+          sumG += data[idx + 1];
+          sumB += data[idx + 2];
+          count++;
+        }
+      }
+    }
+
+    if (count === 0) return;
+    const avgR = Math.round(sumR / count);
+    const avgG = Math.round(sumG / count);
+    const avgB = Math.round(sumB / count);
+
+    const hex = `#${((1 << 24) + (avgR << 16) + (avgG << 8) + avgB).toString(16).slice(1)}`;
+    setKeyColorHex(hex);
+
+    let colorName = `Custom (#${hex.toUpperCase()})`;
+    if (avgG > avgR * 1.15 && avgG > avgB * 1.15) colorName = `Auto Green Screen (${hex})`;
+    else if (avgB > avgR * 1.15 && avgB > avgG * 1.15) colorName = `Auto Blue Screen (${hex})`;
+    else if (avgR > avgG * 1.15 && avgB > avgG * 1.15) colorName = `Auto Magenta Screen (${hex})`;
+    else if (avgR > 200 && avgG > 200 && avgB > 200) colorName = `Auto Bright White (${hex})`;
+    else if (avgR < 60 && avgG < 60 && avgB < 60) colorName = `Auto Dark Backdrop (${hex})`;
+
+    setDetectedColorName(colorName);
+    playCameraSound('beep');
+    onNotify('Smart Key Color Sampled', `Detected solid background: ${colorName}`, 'success');
+  };
+
+  // 2. Dynamic WebGL Engine Procedural Texture Generator
+  const drawWebGlEngineTexture = (
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    textureType: string,
+    timeSec: number,
+    speed: number,
+    intensity: number
+  ) => {
+    const t = timeSec * speed;
+
+    if (textureType === 'cyber_grid') {
+      const grad = ctx.createLinearGradient(0, 0, 0, h);
+      grad.addColorStop(0, '#030712');
+      grad.addColorStop(0.5, '#0f172a');
+      grad.addColorStop(1, '#3b0764');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+
+      const horizY = h * 0.52;
+      const hGlow = ctx.createRadialGradient(w / 2, horizY, 10, w / 2, horizY, w * 0.6);
+      hGlow.addColorStop(0, `rgba(6, 182, 212, ${0.85 * intensity})`);
+      hGlow.addColorStop(0.5, `rgba(168, 85, 247, ${0.45 * intensity})`);
+      hGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = hGlow;
+      ctx.fillRect(0, horizY - 120, w, 240);
+
+      ctx.strokeStyle = `rgba(6, 182, 212, ${0.65 * intensity})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+
+      const numVLines = 24;
+      for (let i = 0; i <= numVLines; i++) {
+        const xTop = (w / numVLines) * i;
+        const xBottom = w / 2 + (xTop - w / 2) * 3;
+        ctx.moveTo(xTop, horizY);
+        ctx.lineTo(xBottom, h);
+      }
+
+      const numHLines = 14;
+      const offset = (t * 45) % 30;
+      for (let i = 0; i < numHLines; i++) {
+        const progress = (i * 25 + offset) / (numHLines * 25);
+        const y = horizY + Math.pow(progress, 2.2) * (h - horizY);
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+      }
+      ctx.stroke();
+
+    } else if (textureType === 'matrix_rain') {
+      ctx.fillStyle = '#020617';
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.font = '14px monospace';
+      const cols = 35;
+      const colW = w / cols;
+      const chars = '0123456789ABCDEFｦｱｳｴｵｶｷｹｺｻｼｽｾｿﾀﾂﾃﾅﾆﾇﾈﾊﾋﾎﾏﾐﾑﾒﾓﾔﾕﾗﾘﾜ';
+
+      for (let c = 0; c < cols; c++) {
+        const colX = c * colW;
+        const seed = Math.sin(c * 99 + 1);
+        const colSpeed = (seed * 0.5 + 1.2) * speed;
+        const dropY = ((t * 120 * colSpeed + seed * 500) % (h + 300)) - 100;
+
+        for (let i = 0; i < 15; i++) {
+          const charY = dropY - i * 18;
+          if (charY > 0 && charY < h) {
+            const char = chars[Math.floor(Math.abs(Math.sin(c + i + t)) * chars.length)];
+            const alpha = (1 - i / 15) * intensity;
+            ctx.fillStyle = i === 0 ? '#ffffff' : `rgba(34, 197, 94, ${alpha})`;
+            ctx.fillText(char, colX, charY);
+          }
+        }
+      }
+
+    } else if (textureType === 'starfield_tunnel') {
+      ctx.fillStyle = '#020617';
+      ctx.fillRect(0, 0, w, h);
+
+      const cx = w / 2;
+      const cy = h / 2;
+      const numStars = 120;
+
+      for (let i = 0; i < numStars; i++) {
+        const angle = (i * 137.5 * Math.PI) / 180;
+        const distSeed = ((i * 37 + t * 250) % 1000) / 1000;
+        const dist = Math.pow(distSeed, 2.5) * (w * 0.7);
+
+        const x = cx + Math.cos(angle) * dist;
+        const y = cy + Math.sin(angle) * dist;
+        const prevX = cx + Math.cos(angle) * (dist * 0.85);
+        const prevY = cy + Math.sin(angle) * (dist * 0.85);
+
+        const size = Math.max(1, distSeed * 4 * intensity);
+        const alpha = Math.min(1, distSeed * 1.5) * intensity;
+
+        ctx.strokeStyle = i % 2 === 0 ? `rgba(6, 182, 212, ${alpha})` : `rgba(236, 72, 153, ${alpha})`;
+        ctx.lineWidth = size;
+        ctx.beginPath();
+        ctx.moveTo(prevX, prevY);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+      }
+
+    } else if (textureType === 'plasma_energy') {
+      const grad = ctx.createLinearGradient(0, 0, w, h);
+      const p1 = Math.sin(t * 0.8);
+      const p2 = Math.cos(t * 1.1);
+      grad.addColorStop(0, `rgb(${Math.floor(80 + p1 * 50)}, ${Math.floor(20 + p2 * 20)}, 120)`);
+      grad.addColorStop(0.5, `rgb(10, ${Math.floor(100 + p2 * 60)}, ${Math.floor(180 + p1 * 50)})`);
+      grad.addColorStop(1, `rgb(${Math.floor(180 + p2 * 50)}, 20, ${Math.floor(80 + p1 * 40)})`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+
+      for (let r = 1; r <= 3; r++) {
+        const rx = w / 2 + Math.sin(t * r * 0.5) * (w * 0.2);
+        const ry = h / 2 + Math.cos(t * r * 0.6) * (h * 0.2);
+        const rad = (w * 0.25) * (1 + Math.sin(t + r) * 0.2);
+        const rGrad = ctx.createRadialGradient(rx, ry, 5, rx, ry, rad);
+        rGrad.addColorStop(0, `rgba(255, 255, 255, ${0.4 * intensity})`);
+        rGrad.addColorStop(0.5, `rgba(6, 182, 212, ${0.25 * intensity})`);
+        rGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = rGrad;
+        ctx.fillRect(0, 0, w, h);
+      }
+
+    } else if (textureType === 'synthwave_sun') {
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
+      bgGrad.addColorStop(0, '#1e1b4b');
+      bgGrad.addColorStop(0.4, '#831843');
+      bgGrad.addColorStop(0.6, '#be123c');
+      bgGrad.addColorStop(1, '#020617');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, w, h);
+
+      const sunX = w / 2;
+      const sunY = h * 0.45;
+      const sunR = Math.min(w, h) * 0.22;
+      const sunGrad = ctx.createLinearGradient(0, sunY - sunR, 0, sunY + sunR);
+      sunGrad.addColorStop(0, '#fde047');
+      sunGrad.addColorStop(0.5, '#f97316');
+      sunGrad.addColorStop(1, '#ec4899');
+      ctx.fillStyle = sunGrad;
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#1e1b4b';
+      for (let s = 1; s <= 6; s++) {
+        const stripeY = sunY + (s * (sunR / 7));
+        const stripeH = s * 1.8;
+        ctx.fillRect(sunX - sunR, stripeY, sunR * 2, stripeH);
+      }
+
+      ctx.strokeStyle = '#ec4899';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      const horizY = h * 0.6;
+      for (let i = -10; i <= 20; i++) {
+        const xTop = (w / 10) * i;
+        const xBottom = w / 2 + (xTop - w / 2) * 2.8;
+        ctx.moveTo(xTop, horizY);
+        ctx.lineTo(xBottom, h);
+      }
+      const offset = (t * 30) % 20;
+      for (let i = 0; i < 10; i++) {
+        const y = horizY + Math.pow((i * 20 + offset) / 200, 2) * (h - horizY);
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+      }
+      ctx.stroke();
+
+    } else if (textureType === 'aurora_borealis') {
+      ctx.fillStyle = '#020617';
+      ctx.fillRect(0, 0, w, h);
+
+      for (let wave = 0; wave < 3; wave++) {
+        ctx.beginPath();
+        ctx.moveTo(0, h);
+        for (let x = 0; x <= w; x += 20) {
+          const y = h * 0.3 + Math.sin(x * 0.008 + t * (1 + wave * 0.3) + wave) * 80 + Math.cos(x * 0.004 - t) * 40;
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(w, h);
+        ctx.closePath();
+
+        const aGrad = ctx.createLinearGradient(0, h * 0.2, 0, h);
+        if (wave === 0) {
+          aGrad.addColorStop(0, `rgba(34, 197, 94, ${0.45 * intensity})`);
+          aGrad.addColorStop(0.5, `rgba(6, 182, 212, ${0.2 * intensity})`);
+        } else if (wave === 1) {
+          aGrad.addColorStop(0, `rgba(168, 85, 247, ${0.4 * intensity})`);
+          aGrad.addColorStop(0.5, `rgba(236, 72, 153, ${0.2 * intensity})`);
+        } else {
+          aGrad.addColorStop(0, `rgba(56, 189, 248, ${0.35 * intensity})`);
+          aGrad.addColorStop(0.5, `rgba(34, 197, 94, ${0.15 * intensity})`);
+        }
+        aGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = aGrad;
+        ctx.fill();
+      }
+
+    } else if (textureType === 'lava_vortex') {
+      const grad = ctx.createRadialGradient(w / 2, h / 2, 20, w / 2, h / 2, w * 0.7);
+      grad.addColorStop(0, '#f97316');
+      grad.addColorStop(0.4, '#dc2626');
+      grad.addColorStop(0.8, '#7f1d1d');
+      grad.addColorStop(1, '#020617');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+
+      const numEmbers = 40;
+      for (let i = 0; i < numEmbers; i++) {
+        const ex = (w / 2) + Math.cos(i + t * 2) * (w * 0.35) * Math.sin(i);
+        const ey = (h / 2) + Math.sin(i + t * 1.5) * (h * 0.35) * Math.cos(i);
+        const er = (i % 4) + 1.5;
+        ctx.fillStyle = `rgba(253, 224, 71, ${0.8 * intensity})`;
+        ctx.beginPath();
+        ctx.arc(ex, ey, er, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  };
+
+  // 3. Real-Time Chroma Key Shader Processing Engine
+  const applyChromaKeyFrame = (
+    videoCtx: CanvasRenderingContext2D,
+    targetCtx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    keyHex: string,
+    tolerance: number,
+    smoothness: number,
+    spill: number
+  ) => {
+    const keyR = parseInt(keyHex.slice(1, 3), 16) || 0;
+    const keyG = parseInt(keyHex.slice(3, 5), 16) || 255;
+    const keyB = parseInt(keyHex.slice(5, 7), 16) || 0;
+
+    const frameData = videoCtx.getImageData(0, 0, w, h);
+    const data = frameData.data;
+    const len = data.length;
+
+    const tolSq = (tolerance * 2.2) ** 2;
+    const smoothSq = ((tolerance + smoothness) * 2.2) ** 2;
+
+    for (let i = 0; i < len; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+
+      const dr = r - keyR;
+      const dg = g - keyG;
+      const db = b - keyB;
+      const distSq = dr * dr + dg * dg + db * db;
+
+      if (distSq < tolSq) {
+        data[i + 3] = 0;
+      } else if (distSq < smoothSq) {
+        const alphaNorm = (Math.sqrt(distSq) - tolerance * 2.2) / (smoothness * 2.2 || 1);
+        data[i + 3] = Math.min(255, Math.max(0, Math.floor(alphaNorm * 255)));
+
+        if (spill > 0 && keyG > keyR && keyG > keyB) {
+          const maxRB = Math.max(r, b);
+          if (g > maxRB) {
+            data[i + 1] = Math.floor(g * (1 - spill / 100) + maxRB * (spill / 100));
+          }
+        }
+      } else if (spill > 0 && keyG > keyR && keyG > keyB) {
+        const maxRB = Math.max(r, b);
+        if (g > maxRB) {
+          const factor = (spill / 100) * 0.5;
+          data[i + 1] = Math.floor(g * (1 - factor) + maxRB * factor);
+        }
+      }
+    }
+
+    targetCtx.putImageData(frameData, 0, 0);
+  };
+
+  // 4. Continuous Animation Frame Loop for Live Smart Chroma Keying
+  useEffect(() => {
+    let animId: number;
+    const startTime = Date.now();
+
+    const processFrame = () => {
+      const video = videoRef.current;
+      const liveCanvas = liveCanvasRef.current;
+      const hiddenCanvas = canvasRef.current;
+
+      if (smartChromaEnabled && video && video.readyState >= 2 && liveCanvas) {
+        const w = video.videoWidth || 1280;
+        const h = video.videoHeight || 720;
+
+        if (liveCanvas.width !== w || liveCanvas.height !== h) {
+          liveCanvas.width = w;
+          liveCanvas.height = h;
+        }
+
+        const lCtx = liveCanvas.getContext('2d');
+        if (lCtx) {
+          const timeSec = (Date.now() - startTime) / 1000;
+
+          // Render WebGL Texture Background
+          drawWebGlEngineTexture(lCtx, w, h, webglTexture, timeSec, webglAnimSpeed, webglIntensity);
+
+          if (hiddenCanvas) {
+            if (hiddenCanvas.width !== w || hiddenCanvas.height !== h) {
+              hiddenCanvas.width = w;
+              hiddenCanvas.height = h;
+            }
+            const hCtx = hiddenCanvas.getContext('2d');
+            if (hCtx) {
+              hCtx.save();
+              if (isMirrored || facingMode === 'user') {
+                hCtx.translate(w, 0);
+                hCtx.scale(-1, 1);
+              }
+              hCtx.drawImage(video, 0, 0, w, h);
+              hCtx.restore();
+
+              // Apply Smart Chroma Key and composite subject over WebGL background
+              applyChromaKeyFrame(hCtx, lCtx, w, h, keyColorHex, keyTolerance, keySmoothness, spillSuppression);
+            }
+          }
+        }
+      }
+
+      animId = requestAnimationFrame(processFrame);
+    };
+
+    if (smartChromaEnabled) {
+      animId = requestAnimationFrame(processFrame);
+    }
+
+    return () => {
+      if (animId) cancelAnimationFrame(animId);
+    };
+  }, [
+    smartChromaEnabled,
+    webglTexture,
+    webglAnimSpeed,
+    webglIntensity,
+    keyColorHex,
+    keyTolerance,
+    keySmoothness,
+    spillSuppression,
+    isMirrored,
+    facingMode,
+  ]);
+
   // Click & Capture Still Photo with HDR, Shutter SFX & Watermark
   const capturePhoto = (isBurst = false) => {
     const video = videoRef.current;
@@ -488,57 +924,61 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
       ctx.filter = cssFilter;
     }
 
-    // 4. Draw Virtual Background or Video Frame
-    if (virtualBg !== 'none') {
-      // Draw Virtual Background Scene first
-      if (virtualBg === 'green_screen') {
-        ctx.fillStyle = '#00ff00';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      } else if (virtualBg === 'blur') {
-        ctx.filter = `blur(${bgBlurAmount}px)`;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        ctx.filter = 'none';
-      } else if (virtualBg === 'custom' && customBgUrl) {
-        const bgImg = new window.Image();
-        bgImg.src = customBgUrl;
-        if (bgImg.complete) {
-          ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+    // 4. Draw Virtual Background, Smart Chroma Key or Video Frame
+    if (smartChromaEnabled && liveCanvasRef.current) {
+      ctx.drawImage(liveCanvasRef.current, 0, 0, canvas.width, canvas.height);
+    } else {
+      if (virtualBg !== 'none') {
+        // Draw Virtual Background Scene first
+        if (virtualBg === 'green_screen') {
+          ctx.fillStyle = '#00ff00';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else if (virtualBg === 'blur') {
+          ctx.filter = `blur(${bgBlurAmount}px)`;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          ctx.filter = 'none';
+        } else if (virtualBg === 'custom' && customBgUrl) {
+          const bgImg = new window.Image();
+          bgImg.src = customBgUrl;
+          if (bgImg.complete) {
+            ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+          } else {
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+          }
+        } else if (virtualBg === 'cyberpunk_tokyo') {
+          const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+          grad.addColorStop(0, '#0f172a');
+          grad.addColorStop(0.5, '#1e1b4b');
+          grad.addColorStop(1, '#581c87');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else if (virtualBg === 'space_nebula') {
+          const grad = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, 50, canvas.width / 2, canvas.height / 2, canvas.width);
+          grad.addColorStop(0, '#2e1065');
+          grad.addColorStop(0.6, '#090514');
+          grad.addColorStop(1, '#020617');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else if (virtualBg === 'neon_sunset') {
+          const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+          grad.addColorStop(0, '#831843');
+          grad.addColorStop(0.5, '#be123c');
+          grad.addColorStop(1, '#fb923c');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
         } else {
-          ctx.fillStyle = '#0f172a';
+          const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+          grad.addColorStop(0, '#020617');
+          grad.addColorStop(1, '#1e293b');
+          ctx.fillStyle = grad;
           ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
-      } else if (virtualBg === 'cyberpunk_tokyo') {
-        const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-        grad.addColorStop(0, '#0f172a');
-        grad.addColorStop(0.5, '#1e1b4b');
-        grad.addColorStop(1, '#581c87');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      } else if (virtualBg === 'space_nebula') {
-        const grad = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, 50, canvas.width / 2, canvas.height / 2, canvas.width);
-        grad.addColorStop(0, '#2e1065');
-        grad.addColorStop(0.6, '#090514');
-        grad.addColorStop(1, '#020617');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      } else if (virtualBg === 'neon_sunset') {
-        const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-        grad.addColorStop(0, '#831843');
-        grad.addColorStop(0.5, '#be123c');
-        grad.addColorStop(1, '#fb923c');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      } else {
-        const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-        grad.addColorStop(0, '#020617');
-        grad.addColorStop(1, '#1e293b');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
-    }
 
-    // Draw Subject Video
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      // Draw Subject Video
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    }
     ctx.restore();
 
     // 5. Watermark & Date/Time Overlay
@@ -718,7 +1158,19 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
       onNotify('Video Recorded', `Saved video clip (${videoRecordingTime}s) to Camera Vault via MediaRecorder API.`, 'success');
     } else {
       // START Recording using MediaRecorder API
-      let activeStream = streamRef.current;
+      let activeStream: MediaStream | null = null;
+
+      if (smartChromaEnabled && liveCanvasRef.current) {
+        try {
+          activeStream = liveCanvasRef.current.captureStream(30);
+        } catch (e) {
+          console.warn('Live canvas captureStream error:', e);
+        }
+      }
+
+      if (!activeStream) {
+        activeStream = streamRef.current;
+      }
 
       // Fallback: If streamRef is not active, capture stream from canvas element
       if (!activeStream || activeStream.getVideoTracks().length === 0 || !activeStream.active) {
@@ -773,13 +1225,15 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
         recorder.onstop = () => {
           const blob = new Blob(videoChunksRef.current, { type: mimeType || 'video/webm' });
           const videoUrl = URL.createObjectURL(blob);
+          const ext = exportFormat === 'mp4' ? 'mp4' : 'webm';
+          const filename = `Pro_Camera_Clip_${Date.now()}.${ext}`;
 
           const newItem: CameraMediaItem = {
             id: `video_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
             type: 'video',
             url: videoUrl,
             blob,
-            title: `MediaRecorder_Video_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '_')}.mp4`,
+            title: filename,
             timestamp: new Date().toLocaleTimeString(),
             durationSec: videoRecordingTime,
             resolution: videoResolution === '4k' ? '3840x2160 (4K)' : '1920x1080 (FHD)',
@@ -790,6 +1244,11 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
           setVaultItems(updated);
           setSelectedVaultItem(newItem);
           if (onMediaCaptured) onMediaCaptured(newItem);
+
+          // Trigger Auto-Download upon recording completion
+          if (autoDownloadOnFinish && blob) {
+            safeDownloadMedia(blob, filename, { type: 'video', onNotify });
+          }
         };
 
         recorder.start(1000);
@@ -1116,6 +1575,14 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                 </div>
               )}
 
+              {/* Live WebGL Keyed Canvas (rendered when Smart Chroma Key is active) */}
+              {smartChromaEnabled && (
+                <canvas
+                  ref={liveCanvasRef}
+                  className="w-full h-full object-cover transition-all duration-150 absolute inset-0 z-10"
+                />
+              )}
+
               {/* Video Element */}
               <video
                 ref={videoRef}
@@ -1130,7 +1597,7 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                     beautyFilterEnabled,
                   }),
                 }}
-                className="w-full h-full object-cover transition-transform duration-150"
+                className={`w-full h-full object-cover transition-transform duration-150 ${smartChromaEnabled ? 'opacity-0 absolute pointer-events-none' : ''}`}
               />
 
               {/* Hidden Canvas for High-Res Processing */}
@@ -1742,6 +2209,246 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                     <span className="text-[10px] text-cyan-400 font-mono">Real-Time Keyer</span>
                   </div>
 
+                  {/* SMART CHROMA KEY & DYNAMIC WEBGL ENGINE SECTION */}
+                  <div className="p-3 rounded-2xl bg-slate-900/90 border border-cyan-500/30 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1 rounded-lg bg-cyan-500/20 text-cyan-400">
+                          <Zap className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white font-['Syne']">
+                            Smart Chroma Key Engine
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            Auto solid-color removal & WebGL textures
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nextState = !smartChromaEnabled;
+                          setSmartChromaEnabled(nextState);
+                          if (nextState) {
+                            handleAutoDetectKeyColor();
+                          }
+                          onNotify(
+                            'Smart Chroma Key',
+                            `Real-time WebGL Chroma Engine ${nextState ? 'ACTIVATED' : 'DEACTIVATED'}`,
+                            nextState ? 'success' : 'info'
+                          );
+                        }}
+                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all shadow-md ${
+                          smartChromaEnabled
+                            ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 font-black shadow-[0_0_12px_rgba(6,182,212,0.5)]'
+                            : 'bg-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {smartChromaEnabled ? 'ACTIVE ⚡' : 'OFF'}
+                      </button>
+                    </div>
+
+                    {smartChromaEnabled && (
+                      <div className="space-y-3 pt-1 border-t border-slate-800 text-xs">
+                        {/* Auto-Detect Key Color Button & Status */}
+                        <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-950/80 border border-slate-800">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="w-5 h-5 rounded-md border border-white/30 shadow-inner shrink-0"
+                              style={{ backgroundColor: keyColorHex }}
+                            />
+                            <div>
+                              <div className="text-[11px] font-bold text-white truncate max-w-[140px]">
+                                {detectedColorName}
+                              </div>
+                              <div className="text-[9px] text-slate-400 font-mono">{keyColorHex}</div>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleAutoDetectKeyColor}
+                            className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-[10px] font-bold flex items-center gap-1 transition-all shrink-0"
+                            title="Sample video feed corner pixels to auto-detect background color"
+                          >
+                            <RefreshCw className="w-3 h-3 animate-spin-slow" />
+                            <span>Auto Detect</span>
+                          </button>
+                        </div>
+
+                        {/* Color Preset Swatches & Custom Color Picker */}
+                        <div className="space-y-1">
+                          <div className="text-[10px] text-slate-400 font-bold">Key Color Preset Swatches</div>
+                          <div className="flex items-center gap-1.5">
+                            {[
+                              { hex: '#00FF00', label: 'Green' },
+                              { hex: '#0000FF', label: 'Blue' },
+                              { hex: '#FF00FF', label: 'Magenta' },
+                              { hex: '#FFFFFF', label: 'White' },
+                              { hex: '#000000', label: 'Black' },
+                            ].map((swatch) => (
+                              <button
+                                key={swatch.hex}
+                                type="button"
+                                onClick={() => {
+                                  setKeyColorHex(swatch.hex);
+                                  setDetectedColorName(`${swatch.label} (${swatch.hex})`);
+                                }}
+                                className={`flex-1 py-1 rounded-lg border text-[10px] font-bold flex flex-col items-center justify-center gap-0.5 transition-all ${
+                                  keyColorHex.toUpperCase() === swatch.hex.toUpperCase()
+                                    ? 'border-cyan-400 ring-2 ring-cyan-400/50 bg-slate-800 text-white'
+                                    : 'border-slate-800 bg-slate-950 text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                <span
+                                  className="w-3 h-3 rounded-full border border-white/20"
+                                  style={{ backgroundColor: swatch.hex }}
+                                />
+                                <span className="text-[9px]">{swatch.label}</span>
+                              </button>
+                            ))}
+                            <label className="p-1.5 rounded-lg border border-slate-800 bg-slate-950 hover:border-slate-700 cursor-pointer flex flex-col items-center justify-center text-[9px] text-slate-400 shrink-0">
+                              <Palette className="w-3 h-3 text-cyan-400" />
+                              <span>Picker</span>
+                              <input
+                                type="color"
+                                value={keyColorHex}
+                                onChange={(e) => {
+                                  setKeyColorHex(e.target.value);
+                                  setDetectedColorName(`Custom Picker (${e.target.value})`);
+                                }}
+                                className="w-0 h-0 opacity-0 pointer-events-none absolute"
+                              />
+                            </label>
+                          </div>
+                        </div>
+
+                        {/* Keying Tolerance & Feathering Sliders */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[10px] text-slate-400">
+                              <span>Tolerance</span>
+                              <span className="font-mono text-cyan-400 font-bold">{keyTolerance}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="5"
+                              max="85"
+                              step="2"
+                              value={keyTolerance}
+                              onChange={(e) => setKeyTolerance(parseInt(e.target.value))}
+                              className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[10px] text-slate-400">
+                              <span>Edge Feather</span>
+                              <span className="font-mono text-cyan-400 font-bold">{keySmoothness}px</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0"
+                              max="40"
+                              step="2"
+                              value={keySmoothness}
+                              onChange={(e) => setKeySmoothness(parseInt(e.target.value))}
+                              className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Spill Suppression */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[10px] text-slate-400">
+                            <span>Color Spill Suppression</span>
+                            <span className="font-mono text-cyan-400 font-bold">{spillSuppression}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="5"
+                            value={spillSuppression}
+                            onChange={(e) => setSpillSuppression(parseInt(e.target.value))}
+                            className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                          />
+                        </div>
+
+                        {/* Dynamic WebGL Background Engine Selector */}
+                        <div className="space-y-1.5 pt-1">
+                          <div className="text-[10px] text-slate-300 font-bold flex items-center justify-between">
+                            <span>Dynamic WebGL Engine Textures</span>
+                            <span className="text-cyan-400 font-mono text-[9px]">60FPS Real-Time</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1.5 max-h-44 overflow-y-auto">
+                            {[
+                              { id: 'cyber_grid', label: '3D Cyber Grid', icon: '🌐' },
+                              { id: 'matrix_rain', label: 'Matrix Code Rain', icon: '💻' },
+                              { id: 'starfield_tunnel', label: 'Warp Starfield', icon: '🚀' },
+                              { id: 'plasma_energy', label: 'Plasma Waves', icon: '🔮' },
+                              { id: 'synthwave_sun', label: '80s Retrowave', icon: '🌅' },
+                              { id: 'aurora_borealis', label: 'Northern Lights', icon: '🌌' },
+                              { id: 'lava_vortex', label: 'Lava Fire Vortex', icon: '🔥' },
+                            ].map((tex) => (
+                              <button
+                                key={tex.id}
+                                type="button"
+                                onClick={() => {
+                                  setWebglTexture(tex.id as any);
+                                  onNotify('Engine Texture Active', `Rendering live ${tex.label} in WebGL engine.`, 'info');
+                                }}
+                                className={`p-2 rounded-xl text-left text-[11px] font-semibold flex items-center gap-1.5 transition-all ${
+                                  webglTexture === tex.id
+                                    ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white border border-cyan-300 font-bold shadow-md'
+                                    : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                                }`}
+                              >
+                                <span>{tex.icon}</span>
+                                <span className="truncate">{tex.label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* WebGL Speed & Intensity Controls */}
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[10px] text-slate-400">
+                              <span>Engine Speed</span>
+                              <span className="font-mono text-cyan-400 font-bold">{webglAnimSpeed.toFixed(1)}x</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0.2"
+                              max="3.0"
+                              step="0.2"
+                              value={webglAnimSpeed}
+                              onChange={(e) => setWebglAnimSpeed(parseFloat(e.target.value))}
+                              className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[10px] text-slate-400">
+                              <span>Glow Intensity</span>
+                              <span className="font-mono text-cyan-400 font-bold">{webglIntensity.toFixed(1)}x</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0.4"
+                              max="2.0"
+                              step="0.2"
+                              value={webglIntensity}
+                              onChange={(e) => setWebglIntensity(parseFloat(e.target.value))}
+                              className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Hidden Custom Background File Input */}
                   <input
                     ref={customBgInputRef}
@@ -1984,6 +2691,52 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                       placeholder="Paste your video speech script or presentation talking points here..."
                     />
                   </div>
+
+                  {/* Video Export Format & Auto-Download Settings */}
+                  <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800 space-y-2 pt-2">
+                    <div className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                      <span>Video Export Format</span>
+                      <span className="text-[10px] text-cyan-400 font-mono uppercase">{exportFormat}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        onClick={() => {
+                          setExportFormat('mp4');
+                          onNotify('Format Set', 'Recorded clips will export in MP4 video format.', 'info');
+                        }}
+                        className={`py-1.5 rounded-xl text-xs font-bold transition-all ${
+                          exportFormat === 'mp4'
+                            ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white border border-cyan-400/50 shadow-md font-black'
+                            : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                        }`}
+                      >
+                        🎥 MP4 Format
+                      </button>
+                      <button
+                        onClick={() => {
+                          setExportFormat('webm');
+                          onNotify('Format Set', 'Recorded clips will export in WebM video format.', 'info');
+                        }}
+                        className={`py-1.5 rounded-xl text-xs font-bold transition-all ${
+                          exportFormat === 'webm'
+                            ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white border border-cyan-400/50 shadow-md font-black'
+                            : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                        }`}
+                      >
+                        📼 WebM Format
+                      </button>
+                    </div>
+
+                    <label className="flex items-center justify-between pt-1 cursor-pointer">
+                      <span className="text-[11px] text-slate-400 font-medium">Auto-Download Clip on Stop</span>
+                      <input
+                        type="checkbox"
+                        checked={autoDownloadOnFinish}
+                        onChange={(e) => setAutoDownloadOnFinish(e.target.checked)}
+                        className="w-4 h-4 rounded accent-cyan-500 cursor-pointer"
+                      />
+                    </label>
+                  </div>
                 </div>
               )}
             </div>
@@ -2149,12 +2902,35 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                             </div>
                           </div>
 
-                          <button
-                            onClick={() => handleDownload(selectedVaultItem)}
-                            className="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md"
-                          >
-                            <Download className="w-3.5 h-3.5" /> Download File
-                          </button>
+                          {selectedVaultItem.type === 'video' ? (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  const name = selectedVaultItem.title.replace(/\.(mp4|webm)$/i, '') + '.mp4';
+                                  safeDownloadMedia(selectedVaultItem.blob || selectedVaultItem.url, name, { type: 'video', onNotify });
+                                }}
+                                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:brightness-110 text-white text-xs font-bold flex items-center gap-1.5 shadow-md"
+                              >
+                                <Download className="w-3.5 h-3.5" /> Download MP4
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const name = selectedVaultItem.title.replace(/\.(mp4|webm)$/i, '') + '.webm';
+                                  safeDownloadMedia(selectedVaultItem.blob || selectedVaultItem.url, name, { type: 'video', onNotify });
+                                }}
+                                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5"
+                              >
+                                <Download className="w-3.5 h-3.5 text-cyan-400" /> Download WebM
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => handleDownload(selectedVaultItem)}
+                              className="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md"
+                            >
+                              <Download className="w-3.5 h-3.5" /> Download File
+                            </button>
+                          )}
                         </div>
                       </div>
 
