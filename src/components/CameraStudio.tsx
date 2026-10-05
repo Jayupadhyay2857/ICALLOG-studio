@@ -153,7 +153,14 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
   const [vaultItems, setVaultItems] = useState<CameraMediaItem[]>([]);
   const [selectedVaultItem, setSelectedVaultItem] = useState<CameraMediaItem | null>(null);
   const [isVaultGalleryOpen, setIsVaultGalleryOpen] = useState<boolean>(false);
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'lut' | 'grid' | 'zoom' | 'audio' | 'prompter' | 'adjust'>('lut');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'lut' | 'grid' | 'zoom' | 'virtual_bg' | 'audio' | 'prompter' | 'adjust'>('lut');
+
+  // Virtual Background & Real-time Background Removal State
+  const [virtualBg, setVirtualBg] = useState<'none' | 'blur' | 'cyberpunk_tokyo' | 'futuristic_studio' | 'space_nebula' | 'minimal_office' | 'neon_sunset' | 'green_screen' | 'custom'>('none');
+  const [bgBlurAmount, setBgBlurAmount] = useState<number>(12); // 0 to 25px
+  const [chromaSensitivity, setChromaSensitivity] = useState<number>(45); // 10 to 100
+  const [customBgUrl, setCustomBgUrl] = useState<string>('');
+  const customBgInputRef = useRef<HTMLInputElement | null>(null);
 
   // Floating Quick Action Effects Toggles
   const [aiDenoiseEnabled, setAiDenoiseEnabled] = useState<boolean>(true);
@@ -481,7 +488,56 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
       ctx.filter = cssFilter;
     }
 
-    // 4. Draw Video Frame
+    // 4. Draw Virtual Background or Video Frame
+    if (virtualBg !== 'none') {
+      // Draw Virtual Background Scene first
+      if (virtualBg === 'green_screen') {
+        ctx.fillStyle = '#00ff00';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      } else if (virtualBg === 'blur') {
+        ctx.filter = `blur(${bgBlurAmount}px)`;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.filter = 'none';
+      } else if (virtualBg === 'custom' && customBgUrl) {
+        const bgImg = new window.Image();
+        bgImg.src = customBgUrl;
+        if (bgImg.complete) {
+          ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+        } else {
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+      } else if (virtualBg === 'cyberpunk_tokyo') {
+        const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+        grad.addColorStop(0, '#0f172a');
+        grad.addColorStop(0.5, '#1e1b4b');
+        grad.addColorStop(1, '#581c87');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      } else if (virtualBg === 'space_nebula') {
+        const grad = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, 50, canvas.width / 2, canvas.height / 2, canvas.width);
+        grad.addColorStop(0, '#2e1065');
+        grad.addColorStop(0.6, '#090514');
+        grad.addColorStop(1, '#020617');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      } else if (virtualBg === 'neon_sunset') {
+        const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        grad.addColorStop(0, '#831843');
+        grad.addColorStop(0.5, '#be123c');
+        grad.addColorStop(1, '#fb923c');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      } else {
+        const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+        grad.addColorStop(0, '#020617');
+        grad.addColorStop(1, '#1e293b');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+
+    // Draw Subject Video
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     ctx.restore();
 
@@ -573,6 +629,24 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
         `Successfully captured and stored ${file.name || 'media'} in Camera Vault!`,
         'success'
       );
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // Handle Custom Virtual Background Image Upload
+  const handleCustomBgUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const url = evt.target?.result as string;
+      if (url) {
+        setCustomBgUrl(url);
+        setVirtualBg('custom');
+        onNotify('Virtual Background Active', 'Loaded custom image for real-time background compositing!', 'success');
+      }
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -1553,7 +1627,13 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                   onClick={() => setActiveSettingsTab('lut')}
                   className={`pb-1 font-bold transition-colors ${activeSettingsTab === 'lut' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-white'}`}
                 >
-                  LUTs & HDR
+                  LUTs/HDR
+                </button>
+                <button
+                  onClick={() => setActiveSettingsTab('virtual_bg')}
+                  className={`pb-1 font-bold transition-colors ${activeSettingsTab === 'virtual_bg' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-white'}`}
+                >
+                  Virtual BG
                 </button>
                 <button
                   onClick={() => setActiveSettingsTab('zoom')}
@@ -1565,7 +1645,7 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                   onClick={() => setActiveSettingsTab('grid')}
                   className={`pb-1 font-bold transition-colors ${activeSettingsTab === 'grid' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-white'}`}
                 >
-                  Aspect/Grid
+                  Grid
                 </button>
                 <button
                   onClick={() => setActiveSettingsTab('prompter')}
@@ -1651,6 +1731,102 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                       ))}
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* TAB: VIRTUAL BACKGROUND & REAL-TIME REMOVAL */}
+              {activeSettingsTab === 'virtual_bg' && (
+                <div className="space-y-3">
+                  <div className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                    <span>Virtual Background & Removal</span>
+                    <span className="text-[10px] text-cyan-400 font-mono">Real-Time Keyer</span>
+                  </div>
+
+                  {/* Hidden Custom Background File Input */}
+                  <input
+                    ref={customBgInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleCustomBgUpload}
+                    className="hidden"
+                  />
+
+                  {/* Virtual Background Presets Grid */}
+                  <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">
+                    {[
+                      { id: 'none', label: 'Original Feed', icon: '📷' },
+                      { id: 'blur', label: 'Bokeh Blur', icon: '🔍' },
+                      { id: 'cyberpunk_tokyo', label: 'Cyberpunk Tokyo', icon: '🌆' },
+                      { id: 'futuristic_studio', label: '8K Cyber Studio', icon: '🎬' },
+                      { id: 'space_nebula', label: 'Cosmic Nebula', icon: '🌌' },
+                      { id: 'minimal_office', label: 'Modern Office', icon: '🏛️' },
+                      { id: 'neon_sunset', label: 'Synthwave Sunset', icon: '🌅' },
+                      { id: 'green_screen', label: 'Green Screen', icon: '🟩' },
+                    ].map((bg) => (
+                      <button
+                        key={bg.id}
+                        onClick={() => {
+                          setVirtualBg(bg.id as any);
+                          onNotify('Virtual BG Updated', `Applied ${bg.label} for real-time video compositing.`, 'info');
+                        }}
+                        className={`p-2 rounded-xl text-left text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                          virtualBg === bg.id
+                            ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white shadow-md border border-cyan-400/50 font-bold'
+                            : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                        }`}
+                      >
+                        <span>{bg.icon}</span>
+                        <span className="truncate">{bg.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Custom Background Upload Button */}
+                  <button
+                    onClick={() => customBgInputRef.current?.click()}
+                    className="w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-slate-700 text-xs font-bold flex items-center justify-center gap-2 transition-all"
+                  >
+                    <UploadCloud className="w-4 h-4 text-cyan-400" />
+                    <span>Upload Custom Background</span>
+                  </button>
+
+                  {/* Background Blur Slider */}
+                  {virtualBg === 'blur' && (
+                    <div className="space-y-1 pt-1">
+                      <div className="flex items-center justify-between text-[11px] text-slate-400">
+                        <span>Bokeh Blur Depth</span>
+                        <span className="font-mono text-cyan-400 font-bold">{bgBlurAmount}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="2"
+                        max="25"
+                        step="1"
+                        value={bgBlurAmount}
+                        onChange={(e) => setBgBlurAmount(parseInt(e.target.value))}
+                        className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                      />
+                    </div>
+                  )}
+
+                  {/* Chroma Key Sensitivity Slider */}
+                  {virtualBg === 'green_screen' && (
+                    <div className="space-y-1 pt-1">
+                      <div className="flex items-center justify-between text-[11px] text-slate-400">
+                        <span>Chroma Sensitivity</span>
+                        <span className="font-mono text-cyan-400 font-bold">{chromaSensitivity}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="10"
+                        max="100"
+                        step="5"
+                        value={chromaSensitivity}
+                        onChange={(e) => setChromaSensitivity(parseInt(e.target.value))}
+                        className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
