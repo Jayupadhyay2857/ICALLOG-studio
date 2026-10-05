@@ -1,7 +1,9 @@
-import { CameraMediaItem, CameraLutFilter } from '../types.ts';
+import { CameraMediaItem, CameraLutFilter, CameraStudioPreset, TeleprompterScript } from '../types.ts';
 import { getSecureLocalItem, setSecureLocalItem } from './securitySanitizer.ts';
 
 const CAMERA_STORAGE_KEY = 'icallog_camera_vault_items_v1';
+const CAMERA_PRESETS_STORAGE_KEY = 'icallog_camera_presets_v1';
+const CAMERA_SCRIPTS_STORAGE_KEY = 'icallog_camera_scripts_v1';
 
 // Play realistic camera sound effects with Web Audio API (no external asset needed)
 export function playCameraSound(type: 'shutter' | 'burst' | 'beep' | 'record_start' | 'record_stop' | 'torch') {
@@ -212,5 +214,193 @@ export function clearVault(): void {
     localStorage.removeItem(CAMERA_STORAGE_KEY);
   } catch {
     // ignore
+  }
+}
+
+// DEFAULT FACTORY PRESET CONFIGURATIONS
+export const DEFAULT_FACTORY_PRESETS: CameraStudioPreset[] = [
+  {
+    id: 'preset_cyberpunk_neon',
+    name: '🎬 Cyberpunk Matrix Studio',
+    createdAt: 'Factory Preset',
+    isDefault: true,
+    filter: 'cyber_neon',
+    hdrEnabled: true,
+    virtualLightingEnabled: true,
+    lightingPreset: 'cyber_neon',
+    keyIntensity: 90, keyColor: '#EC4899', keyPosX: 20, keyPosY: 30, keyRadius: 60,
+    fillIntensity: 65, fillColor: '#06B6D4', fillPosX: 80, fillPosY: 50, fillRadius: 70,
+    rimIntensity: 85, rimColor: '#A855F7', rimPosX: 50, rimPosY: 5, rimRadius: 50,
+    lightingBlendMode: 'overlay',
+    virtualBg: 'cyberpunk_tokyo',
+    smartChromaEnabled: true,
+    keyColorHex: '#00FF00', keyTolerance: 35, keySmoothness: 15, spillSuppression: 30,
+    webglTexture: 'matrix_rain', webglAnimSpeed: 1.2, webglIntensity: 1.2,
+    aiAutoCorrectionEnabled: true, autoExposureGain: 1.1,
+    handGestureTrackingEnabled: true,
+  },
+  {
+    id: 'preset_studio_portrait',
+    name: '📸 8K High-Key Portrait',
+    createdAt: 'Factory Preset',
+    isDefault: true,
+    filter: 'vivid',
+    hdrEnabled: true,
+    virtualLightingEnabled: true,
+    lightingPreset: 'studio_portrait',
+    keyIntensity: 80, keyColor: '#FFF4EA', keyPosX: 25, keyPosY: 25, keyRadius: 65,
+    fillIntensity: 45, fillColor: '#E0F2FE', fillPosX: 75, fillPosY: 45, fillRadius: 75,
+    rimIntensity: 55, rimColor: '#FDE047', rimPosX: 50, rimPosY: 10, rimRadius: 45,
+    lightingBlendMode: 'soft-light',
+    virtualBg: 'blur',
+    smartChromaEnabled: false,
+    keyColorHex: '#00FF00', keyTolerance: 35, keySmoothness: 15, spillSuppression: 30,
+    webglTexture: 'cyber_grid', webglAnimSpeed: 1.0, webglIntensity: 1.0,
+    aiAutoCorrectionEnabled: true, autoExposureGain: 1.0,
+    handGestureTrackingEnabled: false,
+  },
+  {
+    id: 'preset_golden_sunset',
+    name: '🌅 Synthwave Sunset Live',
+    createdAt: 'Factory Preset',
+    isDefault: true,
+    filter: 'warm_vintage',
+    hdrEnabled: true,
+    virtualLightingEnabled: true,
+    lightingPreset: 'golden_sunset',
+    keyIntensity: 85, keyColor: '#F97316', keyPosX: 30, keyPosY: 30, keyRadius: 70,
+    fillIntensity: 40, fillColor: '#8B5CF6', fillPosX: 70, fillPosY: 50, fillRadius: 75,
+    rimIntensity: 75, rimColor: '#FDE047', rimPosX: 50, rimPosY: 10, rimRadius: 45,
+    lightingBlendMode: 'soft-light',
+    virtualBg: 'neon_sunset',
+    smartChromaEnabled: true,
+    keyColorHex: '#00FF00', keyTolerance: 35, keySmoothness: 15, spillSuppression: 30,
+    webglTexture: 'synthwave_sun', webglAnimSpeed: 1.0, webglIntensity: 1.2,
+    aiAutoCorrectionEnabled: false, autoExposureGain: 1.0,
+    handGestureTrackingEnabled: true,
+  },
+  {
+    id: 'preset_pro_greenscreen',
+    name: '🟩 Pro Broadcast Keyer',
+    createdAt: 'Factory Preset',
+    isDefault: true,
+    filter: 'hdr_cinema',
+    hdrEnabled: true,
+    virtualLightingEnabled: true,
+    lightingPreset: 'cool_broadcaster',
+    keyIntensity: 75, keyColor: '#FFFFFF', keyPosX: 30, keyPosY: 20, keyRadius: 60,
+    fillIntensity: 50, fillColor: '#38BDF8', fillPosX: 70, fillPosY: 40, fillRadius: 70,
+    rimIntensity: 45, rimColor: '#E0F2FE', rimPosX: 50, rimPosY: 15, rimRadius: 40,
+    lightingBlendMode: 'soft-light',
+    virtualBg: 'green_screen',
+    smartChromaEnabled: true,
+    keyColorHex: '#00FF00', keyTolerance: 40, keySmoothness: 20, spillSuppression: 40,
+    webglTexture: 'cyber_grid', webglAnimSpeed: 1.0, webglIntensity: 1.0,
+    aiAutoCorrectionEnabled: true, autoExposureGain: 1.0,
+    handGestureTrackingEnabled: false,
+  },
+];
+
+export function getSavedPresets(): CameraStudioPreset[] {
+  try {
+    const saved = getSecureLocalItem<CameraStudioPreset[]>(CAMERA_PRESETS_STORAGE_KEY, []);
+    return [...DEFAULT_FACTORY_PRESETS, ...saved];
+  } catch {
+    return DEFAULT_FACTORY_PRESETS;
+  }
+}
+
+export function saveCustomPreset(preset: CameraStudioPreset): CameraStudioPreset[] {
+  try {
+    const currentCustom = getSecureLocalItem<CameraStudioPreset[]>(CAMERA_PRESETS_STORAGE_KEY, []);
+    const updatedCustom = [preset, ...currentCustom.filter((p) => p.id !== preset.id)];
+    setSecureLocalItem(CAMERA_PRESETS_STORAGE_KEY, updatedCustom);
+    return [...DEFAULT_FACTORY_PRESETS, ...updatedCustom];
+  } catch (e) {
+    console.warn('Failed to save custom preset:', e);
+    return getSavedPresets();
+  }
+}
+
+export function deletePreset(id: string): CameraStudioPreset[] {
+  try {
+    const currentCustom = getSecureLocalItem<CameraStudioPreset[]>(CAMERA_PRESETS_STORAGE_KEY, []);
+    const updatedCustom = currentCustom.filter((p) => p.id !== id);
+    setSecureLocalItem(CAMERA_PRESETS_STORAGE_KEY, updatedCustom);
+    return [...DEFAULT_FACTORY_PRESETS, ...updatedCustom];
+  } catch {
+    return getSavedPresets();
+  }
+}
+
+// DEFAULT FACTORY TELEPROMPTER SCRIPTS
+export const DEFAULT_FACTORY_SCRIPTS: TeleprompterScript[] = [
+  {
+    id: 'script_product_launch',
+    title: '🎤 8K AI Camera Studio Product Pitch',
+    category: 'Product Pitch',
+    content:
+      'Welcome everyone to this live product presentation! Today we are introducing our new 8K AI Camera Studio. With real-time 3-point studio lighting, smart chroma keying, hand gesture shutter AI, and AI auto-tune, you can produce broadcast-quality video content directly from your browser. Try uploading your own custom background or generating WebGL energy waves for your live video stream.',
+    wordCount: 65,
+    estReadingTimeMin: 0.4,
+    createdAt: 'Factory Sample',
+    updatedAt: 'Just now',
+    isDefault: true,
+  },
+  {
+    id: 'script_social_reel',
+    title: '🎬 Creator Video Tips Reel (60s Short)',
+    category: 'Vlog / Reel',
+    content:
+      "Hey creators! Welcome back to my channel. Today I'm sharing 5 pro video recording tips. Tip 1: Always maintain natural eye contact near the lens using this teleprompter overlay. Tip 2: Use soft key and rim backlight to separate yourself from the background. Tip 3: Clean up background ambient noise with AI denoise. Tip 4: Record in 4K UHD. Drop a comment below if you want part 2!",
+    wordCount: 71,
+    estReadingTimeMin: 0.5,
+    createdAt: 'Factory Sample',
+    updatedAt: 'Just now',
+    isDefault: true,
+  },
+  {
+    id: 'script_keynote_presentation',
+    title: '🎙️ Live Executive Keynote Intro',
+    category: 'Keynote',
+    content:
+      "Good morning team, and thank you for joining today's annual strategic keynote presentation. Over the past year, our development team has transformed the digital workspace landscape. Today, we're unveiling our next-generation browser-based media production suite.",
+    wordCount: 38,
+    estReadingTimeMin: 0.3,
+    createdAt: 'Factory Sample',
+    updatedAt: 'Just now',
+    isDefault: true,
+  },
+];
+
+export function getTeleprompterScripts(): TeleprompterScript[] {
+  try {
+    const saved = getSecureLocalItem<TeleprompterScript[]>(CAMERA_SCRIPTS_STORAGE_KEY, []);
+    return [...DEFAULT_FACTORY_SCRIPTS, ...saved];
+  } catch {
+    return DEFAULT_FACTORY_SCRIPTS;
+  }
+}
+
+export function saveTeleprompterScript(script: TeleprompterScript): TeleprompterScript[] {
+  try {
+    const currentCustom = getSecureLocalItem<TeleprompterScript[]>(CAMERA_SCRIPTS_STORAGE_KEY, []);
+    const updatedCustom = [script, ...currentCustom.filter((s) => s.id !== script.id)];
+    setSecureLocalItem(CAMERA_SCRIPTS_STORAGE_KEY, updatedCustom);
+    return [...DEFAULT_FACTORY_SCRIPTS, ...updatedCustom];
+  } catch (e) {
+    console.warn('Failed to save teleprompter script:', e);
+    return getTeleprompterScripts();
+  }
+}
+
+export function deleteTeleprompterScript(id: string): TeleprompterScript[] {
+  try {
+    const currentCustom = getSecureLocalItem<TeleprompterScript[]>(CAMERA_SCRIPTS_STORAGE_KEY, []);
+    const updatedCustom = currentCustom.filter((s) => s.id !== id);
+    setSecureLocalItem(CAMERA_SCRIPTS_STORAGE_KEY, updatedCustom);
+    return [...DEFAULT_FACTORY_SCRIPTS, ...updatedCustom];
+  } catch {
+    return getTeleprompterScripts();
   }
 }

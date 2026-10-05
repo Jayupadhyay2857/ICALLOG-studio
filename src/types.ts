@@ -231,3 +231,54 @@ export interface CameraMediaItem {
   rotation?: number;
   mirrored?: boolean;
 }
+
+export interface CameraStudioPreset {
+  id: string;
+  name: string;
+  createdAt: string;
+  isDefault?: boolean;
+  filter: CameraLutFilter;
+  hdrEnabled: boolean;
+  virtualLightingEnabled: boolean;
+  lightingPreset: string;
+  keyIntensity: number;
+  keyColor: string;
+  keyPosX: number;
+  keyPosY: number;
+  keyRadius: number;
+  fillIntensity: number;
+  fillColor: string;
+  fillPosX: number;
+  fillPosY: number;
+  fillRadius: number;
+  rimIntensity: number;
+  rimColor: string;
+  rimPosX: number;
+  rimPosY: number;
+  rimRadius: number;
+  lightingBlendMode: string;
+  virtualBg: string;
+  smartChromaEnabled: boolean;
+  keyColorHex: string;
+  keyTolerance: number;
+  keySmoothness: number;
+  spillSuppression: number;
+  webglTexture: string;
+  webglAnimSpeed: number;
+  webglIntensity: number;
+  aiAutoCorrectionEnabled: boolean;
+  autoExposureGain: number;
+  handGestureTrackingEnabled: boolean;
+}
+
+export interface TeleprompterScript {
+  id: string;
+  title: string;
+  content: string;
+  category: 'Presentation' | 'Vlog / Reel' | 'Keynote' | 'Product Pitch' | 'Custom';
+  wordCount: number;
+  estReadingTimeMin: number;
+  createdAt: string;
+  updatedAt: string;
+  isDefault?: boolean;
+}

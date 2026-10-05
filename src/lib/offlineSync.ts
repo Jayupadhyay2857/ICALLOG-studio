@@ -24,8 +24,34 @@ export interface ConnectivityState {
   isOnline: boolean;
   isSimulatedOffline: boolean;
   isSyncing: boolean;
+  isGlobalAutoSync: boolean;
   pendingActionsCount: number;
   lastOnlineTimestamp: number;
+}
+
+const GLOBAL_AUTO_SYNC_KEY = 'icallog_global_auto_sync_v1';
+
+export function getGlobalAutoSync(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    const val = localStorage.getItem(GLOBAL_AUTO_SYNC_KEY);
+    return val !== null ? val === 'true' : true;
+  } catch {
+    return true;
+  }
+}
+
+export function setGlobalAutoSync(enabled: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(GLOBAL_AUTO_SYNC_KEY, String(enabled));
+    window.dispatchEvent(
+      new CustomEvent('app:global-auto-sync-change', { detail: { enabled } })
+    );
+    notifyState();
+  } catch (e) {
+    console.warn('Failed to persist Global Auto-Sync preference:', e);
+  }
 }
 
 let simulatedOffline = false;
@@ -42,6 +68,7 @@ function notifyState() {
     isOnline: getEffectiveOnlineStatus(),
     isSimulatedOffline: simulatedOffline,
     isSyncing,
+    isGlobalAutoSync: getGlobalAutoSync(),
     pendingActionsCount: 0,
     lastOnlineTimestamp: Date.now(),
   };
@@ -90,8 +117,8 @@ export async function syncUserState(user: UserProfile): Promise<void> {
   // 2. IndexedDB
   await saveUserStateToIDB(user);
 
-  // If offline, record in queue
-  if (!getEffectiveOnlineStatus()) {
+  // If cloud auto-sync is enabled and offline, record in queue for background sync
+  if (getGlobalAutoSync() && !getEffectiveOnlineStatus()) {
     await enqueueOfflineAction('UPDATE_PROFILE', {
       userId: user.id,
       timestamp: Date.now(),
@@ -116,8 +143,8 @@ export async function syncProjects(projects: ProjectItem[]): Promise<void> {
   // 2. IndexedDB
   await saveProjectsToIDB(projects);
 
-  // If offline, record in queue
-  if (!getEffectiveOnlineStatus()) {
+  // If cloud auto-sync is enabled and offline, record in queue for background sync
+  if (getGlobalAutoSync() && !getEffectiveOnlineStatus()) {
     await enqueueOfflineAction('SAVE_PROJECT', {
       count: projects.length,
       timestamp: Date.now(),

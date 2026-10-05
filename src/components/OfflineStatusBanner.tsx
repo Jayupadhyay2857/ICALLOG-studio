@@ -17,6 +17,7 @@ import {
   ConnectivityState,
   setSimulatedOffline,
   processPendingOfflineSync,
+  getGlobalAutoSync,
 } from '../lib/offlineSync.ts';
 import { getOfflineStorageDiagnostics, OfflineDiagnostics } from '../lib/offlineIndexedDB.ts';
 
@@ -33,6 +34,7 @@ export const OfflineStatusBanner: React.FC<OfflineStatusBannerProps> = ({
     isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
     isSimulatedOffline: false,
     isSyncing: false,
+    isGlobalAutoSync: getGlobalAutoSync(),
     pendingActionsCount: 0,
     lastOnlineTimestamp: Date.now(),
   });

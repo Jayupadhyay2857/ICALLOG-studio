@@ -73,7 +73,7 @@ import { PersonaBadge, getPersonaConfig } from './PersonaBadge.tsx';
 import { PersonaProfileManager } from './PersonaProfileManager.tsx';
 import { getPlansForPersona, PersonaPlan, PERSONA_PLANS } from '../lib/personaPlans.ts';
 import { isUserExplicitFree } from '../lib/explicitEngine.ts';
-import { Layers, Flame, Zap, Wifi, WifiOff, Database } from 'lucide-react';
+import { Layers, Flame, Zap, Wifi, WifiOff, Database, Cloud, CloudOff } from 'lucide-react';
 import {
   getStoredSession,
   extendSessionToken,
@@ -93,6 +93,10 @@ import {
   setSimulatedOffline,
   processPendingOfflineSync,
   forceHardRefreshIndexedDB,
+  getGlobalAutoSync,
+  setGlobalAutoSync,
+  subscribeConnectivity,
+  ConnectivityState,
 } from '../lib/offlineSync.ts';
 import {
   getStoredVoicePreferences,
@@ -145,6 +149,7 @@ export type ProfileTab =
   | 'theme'
   | 'privacy'
   | 'cookies'
+  | 'sync'
   | 'voice'
   | 'feedback';
 
@@ -279,6 +284,77 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   const [swActive, setSwActive] = useState<boolean>(() => {
     return typeof navigator !== 'undefined' && !!navigator.serviceWorker?.controller;
   });
+
+  // Global Auto-Sync (Real-Time Cloud Replication vs Local-Only Storage Mode)
+  const [globalAutoSync, setGlobalAutoSyncState] = useState<boolean>(() => getGlobalAutoSync());
+  const [isProcessingSync, setIsProcessingSync] = useState<boolean>(false);
+  const [lastSyncTimestamp, setLastSyncTimestamp] = useState<string>('Just now');
+
+  useEffect(() => {
+    const handleSyncChange = (e: any) => {
+      if (typeof e.detail?.enabled === 'boolean') {
+        setGlobalAutoSyncState(e.detail.enabled);
+      }
+    };
+    window.addEventListener('app:global-auto-sync-change' as any, handleSyncChange);
+    const unsub = subscribeConnectivity((conn: ConnectivityState) => {
+      setGlobalAutoSyncState(conn.isGlobalAutoSync);
+      setIsSimOffline(conn.isSimulatedOffline || !conn.isOnline);
+    });
+    return () => {
+      window.removeEventListener('app:global-auto-sync-change' as any, handleSyncChange);
+      unsub();
+    };
+  }, []);
+
+  const handleToggleGlobalAutoSync = async (enabled: boolean) => {
+    setGlobalAutoSyncState(enabled);
+    setGlobalAutoSync(enabled);
+    if (enabled) {
+      onNotify(
+        'Global Auto-Sync Enabled ☁️',
+        'Real-time cloud replication active. All project saves, scripts, recordings, and presets will automatically sync to cloud backup.',
+        'success'
+      );
+      if (getEffectiveOnlineStatus()) {
+        setIsProcessingSync(true);
+        try {
+          const res = await processPendingOfflineSync();
+          setLastSyncTimestamp(new Date().toLocaleTimeString());
+          refreshOfflineDiag();
+          if (res.syncedCount > 0) {
+            onNotify('Cloud Sync Complete', res.message, 'success');
+          }
+        } finally {
+          setIsProcessingSync(false);
+        }
+      }
+    } else {
+      onNotify(
+        'Local-Only Storage Mode Active 🔒',
+        'Presentation Safe Mode: Cloud auto-sync is paused. All data, scripts, and media are saved strictly to local device storage (IndexedDB & LocalStorage) with zero network overhead.',
+        'warning'
+      );
+    }
+  };
+
+  const handleManualTriggerSync = async () => {
+    if (!getEffectiveOnlineStatus()) {
+      onNotify('Offline Mode', 'Connect to the internet or disable simulated offline to sync changes.', 'warning');
+      return;
+    }
+    setIsProcessingSync(true);
+    try {
+      const res = await processPendingOfflineSync();
+      setLastSyncTimestamp(new Date().toLocaleTimeString());
+      await refreshOfflineDiag();
+      onNotify('Cloud Synchronized', res.message || 'All local records verified against cloud session.', 'success');
+    } catch (err: any) {
+      onNotify('Sync Notice', err.message || 'Synchronization in progress', 'info');
+    } finally {
+      setIsProcessingSync(false);
+    }
+  };
 
   const refreshOfflineDiag = async () => {
     try {
@@ -1536,6 +1612,40 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
               </div>
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 font-mono border border-cyan-800/60 font-bold">
                 {storageMetrics.usedKb} KB
+              </span>
+            </button>
+
+            <button
+              id="profile-tab-cloud-sync-btn"
+              onClick={() => setActiveTab('sync')}
+              className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
+                activeTab === 'sync'
+                  ? 'bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 text-white font-bold shadow-md shadow-cyan-900/30'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Cloud className="w-4 h-4 text-cyan-400" />
+                <span>Global Auto-Sync</span>
+              </div>
+              <span
+                className={`text-[9px] px-1.5 py-0.5 rounded font-bold font-mono uppercase tracking-wider flex items-center gap-1 ${
+                  globalAutoSync
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                    : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                }`}
+              >
+                {globalAutoSync ? (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Cloud ON
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-2.5 h-2.5 text-amber-400" />
+                    Local Only
+                  </>
+                )}
               </span>
             </button>
 
@@ -4396,13 +4506,30 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                   <h4 className="font-bold text-white font-['Syne']">Privacy & Cloud Data Controls</h4>
                   
                   <label className="flex items-center justify-between cursor-pointer py-1">
-                    <span className="text-slate-300">Enable Cloud Vault Auto-Sync</span>
-                    <input
-                      type="checkbox"
-                      checked={dataSync}
-                      onChange={(e) => setDataSync(e.target.checked)}
-                      className="accent-cyan-500 w-4 h-4 rounded"
-                    />
+                    <div>
+                      <div className="text-slate-300 font-semibold flex items-center gap-1.5">
+                        <span>Global Auto-Sync (Cloud Backup vs Local-Only)</span>
+                        <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold ${globalAutoSync ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-amber-950 text-amber-300 border border-amber-800'}`}>
+                          {globalAutoSync ? 'CLOUD ON' : 'LOCAL-ONLY'}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        {globalAutoSync ? 'Real-time background cloud sync active' : 'Presentation Safe: Local-only storage active'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleGlobalAutoSync(!globalAutoSync)}
+                      className={`w-11 h-6 rounded-full p-1 transition-colors relative shrink-0 ${
+                        globalAutoSync ? 'bg-cyan-500' : 'bg-slate-800'
+                      }`}
+                    >
+                      <div
+                        className={`w-4 h-4 rounded-full bg-white shadow-md transition-transform ${
+                          globalAutoSync ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
                   </label>
 
                   <label className="flex items-center justify-between cursor-pointer py-1">
@@ -4922,6 +5049,385 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                     >
                       <Check className="w-4 h-4" />
                       <span>Accept All Permissions</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 5.4. GLOBAL AUTO-SYNC & CLOUD STORAGE POLICY */}
+            {activeTab === 'sync' && (
+              <div className="space-y-4 text-xs animate-in fade-in duration-200">
+                {/* Header Banner */}
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-cyan-950/60 via-slate-900 to-indigo-950/60 border border-cyan-500/40 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-white shrink-0 shadow-lg shadow-cyan-950">
+                      <Cloud className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-white text-sm font-['Syne']">
+                          Global Auto-Sync & Presentation Storage
+                        </h3>
+                        <span
+                          className={`text-[9px] px-2 py-0.5 rounded-full font-bold font-mono uppercase tracking-wider ${
+                            globalAutoSync
+                              ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
+                              : 'bg-amber-950 text-amber-300 border border-amber-500/40'
+                          }`}
+                        >
+                          {globalAutoSync ? '☁️ Cloud Backup Active' : '🔒 Local-Only (Presentation Safe)'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
+                        Control real-time cloud synchronization. Keep projects backed up across devices or switch to <strong>Local-Only Mode</strong> to eliminate network latency, prevent sync errors, and protect data during live presentations.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 self-start md:self-auto">
+                    <button
+                      type="button"
+                      disabled={isProcessingSync}
+                      onClick={handleManualTriggerSync}
+                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 hover:text-white text-xs font-bold border border-cyan-500/30 flex items-center gap-1.5 transition-all shadow-md disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isProcessingSync ? 'animate-spin' : ''}`} />
+                      <span>{isProcessingSync ? 'Syncing...' : 'Sync Now'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Master Global Auto-Sync Toggle Card */}
+                <div
+                  className={`p-4 rounded-2xl border transition-all shadow-xl space-y-3 ${
+                    globalAutoSync
+                      ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/30 border-emerald-500/40'
+                      : 'bg-gradient-to-br from-slate-950 via-slate-900 to-amber-950/30 border-amber-500/40'
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
+                          globalAutoSync
+                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                            : 'bg-amber-500/20 text-amber-400 border-amber-500/40'
+                        }`}
+                      >
+                        {globalAutoSync ? <Cloud className="w-5 h-5" /> : <CloudOff className="w-5 h-5" />}
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-white flex items-center gap-2">
+                          <span>Global Auto-Sync Master Switch</span>
+                          <span
+                            className={`text-[9px] px-2 py-0.2 rounded font-mono font-bold ${
+                              globalAutoSync
+                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                                : 'bg-amber-950 text-amber-300 border border-amber-800'
+                            }`}
+                          >
+                            {globalAutoSync ? 'ENABLED' : 'PAUSED (LOCAL ONLY)'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">
+                          {globalAutoSync
+                            ? 'Real-time background replication is active. All media vault items, teleprompter scripts, custom presets, and projects sync continuously to cloud storage.'
+                            : 'Presentation Safe Mode active: Cloud auto-sync is completely disabled. All items are stored strictly in local IndexedDB & LocalStorage.'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      id="global-auto-sync-master-toggle-btn"
+                      onClick={() => handleToggleGlobalAutoSync(!globalAutoSync)}
+                      className={`w-14 h-7 rounded-full p-1 transition-colors relative shrink-0 shadow-inner ${
+                        globalAutoSync ? 'bg-emerald-500' : 'bg-slate-800'
+                      }`}
+                      aria-label="Toggle Global Auto-Sync"
+                    >
+                      <div
+                        className={`w-5 h-5 rounded-full bg-white shadow-md transition-transform ${
+                          globalAutoSync ? 'translate-x-7' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Mode explanation alert */}
+                  <div
+                    className={`p-3 rounded-xl border text-[11px] leading-relaxed flex items-start gap-2.5 ${
+                      globalAutoSync
+                        ? 'bg-emerald-950/40 border-emerald-800/40 text-emerald-200'
+                        : 'bg-amber-950/40 border-amber-800/40 text-amber-200'
+                    }`}
+                  >
+                    <span className="text-sm shrink-0">{globalAutoSync ? '☁️' : '💡'}</span>
+                    <div>
+                      {globalAutoSync ? (
+                        <>
+                          <strong>Real-Time Cloud Backup is Active:</strong> Every project edit, 8K camera snap, video recording, teleprompter script, and custom preset will automatically replicate to the remote cloud vault. If you are preparing to present live on stage with unstable Wi-Fi, consider toggling to <strong>Local-Only Mode</strong> below.
+                        </>
+                      ) : (
+                        <>
+                          <strong>Presentation Safe Mode is Active:</strong> Zero network requests will be made for media or projects. Everything is stored locally on this machine via IndexedDB & LocalStorage. You can present smoothly without buffering, bandwidth lag, or unexpected sync errors.
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Storage Mode Comparison & 1-Click Selectors */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* Option A: Local-Only Storage Mode */}
+                  <div
+                    onClick={() => {
+                      if (globalAutoSync) handleToggleGlobalAutoSync(false);
+                    }}
+                    className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-3 relative overflow-hidden ${
+                      !globalAutoSync
+                        ? 'bg-amber-950/30 border-amber-500/60 ring-2 ring-amber-500/30 shadow-lg shadow-amber-950/30'
+                        : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
+                          🔒
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white">Local-Only Storage Mode</div>
+                          <div className="text-[10px] text-amber-400 font-mono">Recommended for Live Presentations</div>
+                        </div>
+                      </div>
+                      {!globalAutoSync && (
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                          CURRENT MODE
+                        </span>
+                      )}
+                    </div>
+
+                    <ul className="space-y-1.5 text-[11px] text-slate-300">
+                      <li className="flex items-start gap-1.5">
+                        <Check className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                        <span><strong>Zero Network Lag:</strong> No background sync competing with screen-share or live streaming.</span>
+                      </li>
+                      <li className="flex items-start gap-1.5">
+                        <Check className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                        <span><strong>100% Offline Immunity:</strong> Presentation won't stall if venue Wi-Fi drops out.</span>
+                      </li>
+                      <li className="flex items-start gap-1.5">
+                        <Check className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                        <span><strong>High-Speed IndexedDB:</strong> Instant local reads/writes for 8K video, scripts & audio.</span>
+                      </li>
+                      <li className="flex items-start gap-1.5">
+                        <Check className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                        <span><strong>Confidential & Isolated:</strong> Unreleased keynote scripts and demo drafts stay on this device.</span>
+                      </li>
+                    </ul>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (globalAutoSync) handleToggleGlobalAutoSync(false);
+                      }}
+                      className={`w-full py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                        !globalAutoSync
+                          ? 'bg-amber-500 text-slate-950 font-black'
+                          : 'bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/30'
+                      }`}
+                    >
+                      {!globalAutoSync ? '✓ Active Presentation Mode' : 'Switch to Local-Only Mode'}
+                    </button>
+                  </div>
+
+                  {/* Option B: Real-Time Cloud Backup Mode */}
+                  <div
+                    onClick={() => {
+                      if (!globalAutoSync) handleToggleGlobalAutoSync(true);
+                    }}
+                    className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-3 relative overflow-hidden ${
+                      globalAutoSync
+                        ? 'bg-cyan-950/30 border-cyan-500/60 ring-2 ring-cyan-500/30 shadow-lg shadow-cyan-950/30'
+                        : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold">
+                          ☁️
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white">Real-Time Cloud Backup Mode</div>
+                          <div className="text-[10px] text-cyan-400 font-mono">Recommended for Daily Creation & Collab</div>
+                        </div>
+                      </div>
+                      {globalAutoSync && (
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                          CURRENT MODE
+                        </span>
+                      )}
+                    </div>
+
+                    <ul className="space-y-1.5 text-[11px] text-slate-300">
+                      <li className="flex items-start gap-1.5">
+                        <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+                        <span><strong>Continuous Replication:</strong> All changes automatically backed up to remote cloud vault.</span>
+                      </li>
+                      <li className="flex items-start gap-1.5">
+                        <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+                        <span><strong>Multi-Device Access:</strong> Access presets and scripts from mobile, tablet or second laptop.</span>
+                      </li>
+                      <li className="flex items-start gap-1.5">
+                        <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+                        <span><strong>Disaster Recovery:</strong> Projects safe even if browser site data or cookies get cleared.</span>
+                      </li>
+                      <li className="flex items-start gap-1.5">
+                        <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+                        <span><strong>Smart Reconnect Queue:</strong> Queues actions and syncs automatically when reconnected.</span>
+                      </li>
+                    </ul>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!globalAutoSync) handleToggleGlobalAutoSync(true);
+                      }}
+                      className={`w-full py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                        globalAutoSync
+                          ? 'bg-cyan-500 text-slate-950 font-black'
+                          : 'bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-cyan-500/30'
+                      }`}
+                    >
+                      {globalAutoSync ? '✓ Active Cloud Mode' : 'Switch to Cloud Backup Mode'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Live Synchronization Health & Metrics */}
+                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-white font-['Syne'] flex items-center gap-2">
+                      <span>Presentation Readiness & Sync Health</span>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        Last check: {lastSyncTimestamp}
+                      </span>
+                    </h4>
+                    <span className="text-[10px] text-cyan-400 font-mono">
+                      Database: v{offlineDiag ? offlineDiag.dbVersion : 1}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                      <div className="text-[10px] text-slate-400 flex items-center gap-1">
+                        <Wifi className="w-3 h-3 text-cyan-400" /> Network Status
+                      </div>
+                      <div className="text-xs font-black text-white font-mono mt-0.5 flex items-center gap-1">
+                        {isSimOffline ? (
+                          <span className="text-amber-400">Offline Simulation</span>
+                        ) : (
+                          <span className="text-emerald-400">Online & Ready</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                      <div className="text-[10px] text-slate-400 flex items-center gap-1">
+                        <Cloud className="w-3 h-3 text-indigo-400" /> Auto-Sync State
+                      </div>
+                      <div className="text-xs font-black text-white font-mono mt-0.5">
+                        {globalAutoSync ? (
+                          <span className="text-emerald-400">Cloud Active</span>
+                        ) : (
+                          <span className="text-amber-400">Local Only (Safe)</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                      <div className="text-[10px] text-slate-400 flex items-center gap-1">
+                        <Database className="w-3 h-3 text-cyan-400" /> Local Vault
+                      </div>
+                      <div className="text-xs font-black text-white font-mono mt-0.5">
+                        {storageMetrics.usedKb} KB ({storageMetrics.itemsCount} Keys)
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                      <div className="text-[10px] text-slate-400 flex items-center gap-1">
+                        <RefreshCw className="w-3 h-3 text-amber-400" /> Offline Sync Queue
+                      </div>
+                      <div className="text-xs font-black text-white font-mono mt-0.5">
+                        {offlineDiag ? offlineDiag.pendingQueueCount : 0} Pending
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions Bar */}
+                  <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-800/80">
+                    <button
+                      type="button"
+                      disabled={isProcessingSync}
+                      onClick={handleManualTriggerSync}
+                      className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shadow-cyan-950 disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isProcessingSync ? 'animate-spin' : ''}`} />
+                      <span>{isProcessingSync ? 'Syncing...' : 'Sync Pending Changes Now'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !isSimOffline;
+                        setSimulatedOffline(next);
+                        setIsSimOffline(next);
+                        onNotify(
+                          next ? 'Offline Simulation Active' : 'Network Simulation Restored',
+                          next
+                            ? 'Operating purely from local IndexedDB cache. Ideal for testing your live presentation without turning off Wi-Fi.'
+                            : 'Normal network connectivity restored.',
+                          next ? 'warning' : 'success'
+                        );
+                      }}
+                      className={`px-3 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-colors ${
+                        isSimOffline
+                          ? 'bg-amber-600 hover:bg-amber-500 text-slate-950 border-amber-400'
+                          : 'bg-slate-800 hover:bg-slate-700 text-amber-300 border-amber-700/50'
+                      }`}
+                    >
+                      {isSimOffline ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
+                      <span>{isSimOffline ? 'Exit Offline Simulation' : 'Simulate Offline Presentation'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isHardRefreshing}
+                      onClick={async () => {
+                        setIsHardRefreshing(true);
+                        try {
+                          const result = await forceHardRefreshIndexedDB(user);
+                          if (result.success && result.user) {
+                            onUpdateUser(result.user);
+                            await refreshOfflineDiag();
+                            setLastSyncTimestamp(new Date().toLocaleTimeString());
+                            onNotify('Hard Refresh Complete', result.message, 'success');
+                          } else {
+                            onNotify('Hard Refresh Notice', result.message, 'warning');
+                          }
+                        } catch (err: any) {
+                          onNotify('Hard Refresh Error', err.message || 'Server sync failed', 'error');
+                        } finally {
+                          setIsHardRefreshing(false);
+                        }
+                      }}
+                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                    >
+                      <HardDrive className={`w-3.5 h-3.5 ${isHardRefreshing ? 'animate-spin' : ''}`} />
+                      <span>{isHardRefreshing ? 'Pulling...' : 'Force Pull Cloud State'}</span>
                     </button>
                   </div>
                 </div>

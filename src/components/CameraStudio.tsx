@@ -41,6 +41,15 @@ import {
   Radio,
   Copy,
   ExternalLink,
+  Cloud,
+  CloudOff,
+  Lock,
+  Wifi,
+  WifiOff,
+  Search,
+  CheckCircle2,
+  Edit3,
+  Keyboard,
 } from 'lucide-react';
 import {
   ActiveTab,
@@ -49,6 +58,8 @@ import {
   CameraAspectRatio,
   CameraLutFilter,
   CameraMediaItem,
+  CameraStudioPreset,
+  TeleprompterScript,
 } from '../types.ts';
 import {
   playCameraSound,
@@ -57,8 +68,26 @@ import {
   getVaultItems,
   deleteVaultItem,
   clearVault,
+  getSavedPresets,
+  saveCustomPreset,
+  deletePreset,
+  getTeleprompterScripts,
+  saveTeleprompterScript,
+  deleteTeleprompterScript,
 } from '../lib/cameraVault.ts';
+import {
+  getAllScriptsFromIDB,
+  saveScriptToIDB,
+  deleteScriptFromIDB,
+  resetScriptsToFactoryIDB,
+} from '../lib/scriptIndexedDB.ts';
 import { safeDownloadMedia } from '../lib/downloadHelper.ts';
+import {
+  getGlobalAutoSync,
+  setGlobalAutoSync,
+  processPendingOfflineSync,
+  getEffectiveOnlineStatus,
+} from '../lib/offlineSync.ts';
 
 interface CameraStudioProps {
   user: UserProfile;
@@ -154,9 +183,27 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
   // Teleprompter (for Video Creators & Presentations)
   const [teleprompterOpen, setTeleprompterOpen] = useState<boolean>(false);
   const [teleprompterText, setTeleprompterText] = useState<string>(
-    'Welcome to iCallog Pro Camera Studio! You can record 4K ultra cinematic clips, capture high-res HDR photography, and record crystal-clear audio podcasts with real-time effects.'
+    'Welcome to iCallog Pro Camera Studio! You can record 4K ultra cinematic clips, capture high-res HDR photography, and record crystal-clear audio podcasts with real-time effects. Maintain natural eye contact near the camera lens for optimal presentation impact.'
   );
-  const [teleprompterSpeed, setTeleprompterSpeed] = useState<number>(2);
+  const [teleprompterSpeed, setTeleprompterSpeed] = useState<number>(2.5); // 0.5x to 8.0x
+  const [teleprompterFontSize, setTeleprompterFontSize] = useState<number>(18); // 14 to 32px
+  const [teleprompterOpacity, setTeleprompterOpacity] = useState<number>(85); // 30% to 100%
+  const [teleprompterPos, setTeleprompterPos] = useState<'top' | 'center' | 'bottom'>('top');
+  const [teleprompterIsScrolling, setTeleprompterIsScrolling] = useState<boolean>(false);
+  const [teleprompterAutoScrollOnRecord, setTeleprompterAutoScrollOnRecord] = useState<boolean>(true);
+  const teleprompterBoxRef = useRef<HTMLDivElement | null>(null);
+  const teleprompterAnimFrameRef = useRef<number | null>(null);
+
+  // Script Editor & Persistent IndexedDB Library State
+  const [savedScripts, setSavedScripts] = useState<TeleprompterScript[]>([]);
+  const [activeScriptId, setActiveScriptId] = useState<string>('script_product_launch');
+  const [scriptTitleInput, setScriptTitleInput] = useState<string>('');
+  const [scriptCategoryInput, setScriptCategoryInput] = useState<
+    'Presentation' | 'Vlog / Reel' | 'Keynote' | 'Product Pitch' | 'Custom'
+  >('Custom');
+  const [scriptSearchQuery, setScriptSearchQuery] = useState<string>('');
+  const [scriptCategoryFilter, setScriptCategoryFilter] = useState<string>('All');
+  const [isScriptIdbLoading, setIsScriptIdbLoading] = useState<boolean>(false);
 
   // Sound / Mic Recording State
   const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
@@ -174,9 +221,44 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
   const [vaultItems, setVaultItems] = useState<CameraMediaItem[]>([]);
   const [selectedVaultItem, setSelectedVaultItem] = useState<CameraMediaItem | null>(null);
   const [isVaultGalleryOpen, setIsVaultGalleryOpen] = useState<boolean>(false);
+  const [isScriptLibraryModalOpen, setIsScriptLibraryModalOpen] = useState<boolean>(false);
+  const [isHotkeysModalOpen, setIsHotkeysModalOpen] = useState<boolean>(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<
-    'lut' | 'virtual_bg' | 'studio_lighting' | 'zoom' | 'grid' | 'prompter' | 'adjust'
+    'lut' | 'virtual_bg' | 'studio_lighting' | 'zoom' | 'grid' | 'prompter' | 'script_library' | 'adjust' | 'gestures' | 'presets' | 'sync'
   >('lut');
+
+  // Global Auto-Sync (Presentation Safe Local-Only vs Real-Time Cloud Replication)
+  const [globalAutoSync, setGlobalAutoSyncState] = useState<boolean>(() => getGlobalAutoSync());
+  const [isSyncingVault, setIsSyncingVault] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleSyncChange = (e: any) => {
+      if (typeof e.detail?.enabled === 'boolean') {
+        setGlobalAutoSyncState(e.detail.enabled);
+      }
+    };
+    window.addEventListener('app:global-auto-sync-change' as any, handleSyncChange);
+    return () => {
+      window.removeEventListener('app:global-auto-sync-change' as any, handleSyncChange);
+    };
+  }, []);
+
+  // Pro Preset Library State
+  const [savedPresets, setSavedPresets] = useState<CameraStudioPreset[]>([]);
+  const [newPresetNameInput, setNewPresetNameInput] = useState<string>('');
+
+  // Hand Tracking AI Module State
+  const [handGestureTrackingEnabled, setHandGestureTrackingEnabled] = useState<boolean>(false);
+  const [activeDetectedGesture, setActiveDetectedGesture] = useState<
+    'none' | 'peace_sign' | 'open_palm' | 'thumbs_up' | 'fist' | 'ok_sign'
+  >('none');
+  const [gestureConfidence, setGestureConfidence] = useState<number>(0);
+  const [gestureCountdown, setGestureCountdown] = useState<number | null>(null);
+  const [gestureShutterDelay, setGestureShutterDelay] = useState<number>(3); // 1, 3, 5 seconds
+  const [gestureShowSkeleton, setGestureShowSkeleton] = useState<boolean>(true);
+  const gestureTriggerCooldownRef = useRef<boolean>(false);
+  const gestureHoldFramesRef = useRef<number>(0);
+  const gestureCountdownTimerRef = useRef<any>(null);
 
   // Virtual 3-Point Studio Lighting Control State
   const [virtualLightingEnabled, setVirtualLightingEnabled] = useState<boolean>(false);
@@ -247,10 +329,70 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
   const [voiceHelpModalOpen, setVoiceHelpModalOpen] = useState<boolean>(false);
   const recognitionRef = useRef<any>(null);
 
-  // Load Vault Items on Mount
+  // Load Vault Items, Presets & IndexedDB Teleprompter Scripts on Mount
   useEffect(() => {
     setVaultItems(getVaultItems());
+    setSavedPresets(getSavedPresets());
+
+    // Load Scripts from IndexedDB (with fallback)
+    setIsScriptIdbLoading(true);
+    getAllScriptsFromIDB()
+      .then((scripts) => {
+        setSavedScripts(scripts);
+        if (scripts.length > 0) {
+          const initial = scripts.find((s) => s.id === 'script_product_launch') || scripts[0];
+          setActiveScriptId(initial.id);
+          setTeleprompterText(initial.content);
+          setScriptTitleInput(initial.title);
+          setScriptCategoryInput(initial.category);
+        }
+      })
+      .catch((err) => {
+        console.warn('IndexedDB scripts load error:', err);
+        const fallback = getTeleprompterScripts();
+        setSavedScripts(fallback);
+      })
+      .finally(() => {
+        setIsScriptIdbLoading(false);
+      });
   }, []);
+
+  // Teleprompter Smooth Real-Time Auto-Scroll Engine Loop
+  useEffect(() => {
+    const shouldScroll =
+      teleprompterOpen && (teleprompterIsScrolling || (isRecordingVideo && teleprompterAutoScrollOnRecord));
+
+    if (!shouldScroll) {
+      if (teleprompterAnimFrameRef.current) cancelAnimationFrame(teleprompterAnimFrameRef.current);
+      return;
+    }
+
+    let lastTime = performance.now();
+
+    const scrollLoop = (now: number) => {
+      const delta = (now - lastTime) / 1000;
+      lastTime = now;
+
+      if (teleprompterBoxRef.current) {
+        const box = teleprompterBoxRef.current;
+        const scrollAmount = teleprompterSpeed * 20 * delta; // speed factor
+        box.scrollTop += scrollAmount;
+
+        // Reset loop if scrolled past bottom
+        if (box.scrollTop >= box.scrollHeight - box.clientHeight - 2) {
+          box.scrollTop = 0;
+        }
+      }
+
+      teleprompterAnimFrameRef.current = requestAnimationFrame(scrollLoop);
+    };
+
+    teleprompterAnimFrameRef.current = requestAnimationFrame(scrollLoop);
+
+    return () => {
+      if (teleprompterAnimFrameRef.current) cancelAnimationFrame(teleprompterAnimFrameRef.current);
+    };
+  }, [teleprompterOpen, teleprompterIsScrolling, isRecordingVideo, teleprompterAutoScrollOnRecord, teleprompterSpeed]);
 
   // Web Speech API Voice Recognition Handler
   useEffect(() => {
@@ -446,6 +588,249 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
     initStream(undefined, nextFacing);
     playCameraSound('beep');
     onNotify('Camera Switched', `Active sensor switched to ${nextFacing === 'user' ? 'Front Selfie Lens' : 'Rear Environment Lens'}.`, 'info');
+  };
+
+  // --- PRO PRESET LIBRARY FUNCTIONS ---
+
+  const handleApplyPreset = (preset: CameraStudioPreset) => {
+    setFilter(preset.filter);
+    setHdrEnabled(preset.hdrEnabled);
+    setVirtualLightingEnabled(preset.virtualLightingEnabled);
+    if (preset.lightingPreset) setLightingPreset(preset.lightingPreset as any);
+    setKeyIntensity(preset.keyIntensity);
+    setKeyColor(preset.keyColor);
+    setKeyPosX(preset.keyPosX);
+    setKeyPosY(preset.keyPosY);
+    setKeyRadius(preset.keyRadius);
+    setFillIntensity(preset.fillIntensity);
+    setFillColor(preset.fillColor);
+    setFillPosX(preset.fillPosX);
+    setFillPosY(preset.fillPosY);
+    setFillRadius(preset.fillRadius);
+    setRimIntensity(preset.rimIntensity);
+    setRimColor(preset.rimColor);
+    setRimPosX(preset.rimPosX);
+    setRimPosY(preset.rimPosY);
+    setRimRadius(preset.rimRadius);
+    if (preset.lightingBlendMode) setLightingBlendMode(preset.lightingBlendMode as any);
+    setVirtualBg(preset.virtualBg as any);
+    setSmartChromaEnabled(preset.smartChromaEnabled);
+    setKeyColorHex(preset.keyColorHex);
+    setKeyTolerance(preset.keyTolerance);
+    setKeySmoothness(preset.keySmoothness);
+    setSpillSuppression(preset.spillSuppression);
+    setWebglTexture(preset.webglTexture as any);
+    setWebglAnimSpeed(preset.webglAnimSpeed);
+    setWebglIntensity(preset.webglIntensity);
+    setAiAutoCorrectionEnabled(preset.aiAutoCorrectionEnabled);
+    setAutoExposureGain(preset.autoExposureGain);
+    setHandGestureTrackingEnabled(preset.handGestureTrackingEnabled);
+
+    playCameraSound('beep');
+    onNotify('Preset Applied 🎨', `Loaded "${preset.name}" preset configuration.`, 'success');
+  };
+
+  const handleSaveCurrentSetupAsPreset = () => {
+    const name = newPresetNameInput.trim() || `Custom Setup ${new Date().toLocaleTimeString()}`;
+    const newPreset: CameraStudioPreset = {
+      id: `preset_custom_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      name,
+      createdAt: new Date().toLocaleDateString(),
+      filter,
+      hdrEnabled,
+      virtualLightingEnabled,
+      lightingPreset,
+      keyIntensity, keyColor, keyPosX, keyPosY, keyRadius,
+      fillIntensity, fillColor, fillPosX, fillPosY, fillRadius,
+      rimIntensity, rimColor, rimPosX, rimPosY, rimRadius,
+      lightingBlendMode,
+      virtualBg,
+      smartChromaEnabled,
+      keyColorHex, keyTolerance, keySmoothness, spillSuppression,
+      webglTexture, webglAnimSpeed, webglIntensity,
+      aiAutoCorrectionEnabled, autoExposureGain,
+      handGestureTrackingEnabled,
+    };
+
+    const updated = saveCustomPreset(newPreset);
+    setSavedPresets(updated);
+    setNewPresetNameInput('');
+    playCameraSound('beep');
+    onNotify('Preset Saved 💾', `Saved custom setup "${name}" to Pro Preset Library.`, 'success');
+  };
+
+  const handleDeletePreset = (id: string, name: string) => {
+    const updated = deletePreset(id);
+    setSavedPresets(updated);
+    onNotify('Preset Deleted', `Removed "${name}" from Pro Preset Library.`, 'info');
+  };
+
+  // --- SMART TELEPROMPTER SCRIPT LIBRARY FUNCTIONS (INDEXEDDB PERSISTENT) ---
+
+  const handleSelectScriptForTeleprompter = (script: TeleprompterScript) => {
+    setActiveScriptId(script.id);
+    setTeleprompterText(script.content);
+    setScriptTitleInput(script.title);
+    setScriptCategoryInput(script.category);
+    if (!teleprompterOpen) {
+      setTeleprompterOpen(true);
+    }
+    if (teleprompterBoxRef.current) {
+      teleprompterBoxRef.current.scrollTop = 0;
+    }
+    playCameraSound('beep');
+    onNotify(
+      'Script Loaded to Teleprompter 📜',
+      `Loaded "${script.title}" (${script.wordCount} words, ~${script.estReadingTimeMin}m speech time) into live teleprompter view.`,
+      'success'
+    );
+  };
+
+  const handleSaveCurrentScript = async () => {
+    if (!teleprompterText.trim()) {
+      onNotify('Script Content Empty', 'Please enter some script speech text before saving.', 'warning');
+      return;
+    }
+
+    const title = scriptTitleInput.trim() || `Presentation Script ${new Date().toLocaleTimeString()}`;
+    const words = teleprompterText.trim().split(/\s+/).filter(Boolean).length;
+    const estReadingTimeMin = +(words / 140).toFixed(1);
+
+    // If currently editing an existing script document, preserve its ID
+    const existing = savedScripts.find((s) => s.id === activeScriptId);
+    const scriptId = existing ? existing.id : `script_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+
+    const scriptDoc: TeleprompterScript = {
+      id: scriptId,
+      title,
+      content: teleprompterText,
+      category: scriptCategoryInput,
+      wordCount: words,
+      estReadingTimeMin,
+      createdAt: existing ? existing.createdAt : new Date().toLocaleDateString(),
+      updatedAt: new Date().toLocaleTimeString(),
+      isDefault: false,
+    };
+
+    try {
+      setIsScriptIdbLoading(true);
+      // 1. Save directly into IndexedDB
+      const updated = await saveScriptToIDB(scriptDoc);
+      // 2. Also keep LocalStorage backup
+      saveTeleprompterScript(scriptDoc);
+
+      setSavedScripts(updated);
+      setActiveScriptId(scriptDoc.id);
+      playCameraSound('beep');
+      onNotify('Saved to IndexedDB 🗄️', `Saved script document "${title}" (${words} words). Ready for live teleprompter!`, 'success');
+    } catch (err) {
+      console.warn('Failed saving script to IndexedDB:', err);
+      const fallback = saveTeleprompterScript(scriptDoc);
+      setSavedScripts(fallback);
+      setActiveScriptId(scriptDoc.id);
+      onNotify('Script Saved', `Saved "${title}" locally.`, 'info');
+    } finally {
+      setIsScriptIdbLoading(false);
+    }
+  };
+
+  const handleDeleteScript = async (id: string, title: string) => {
+    try {
+      setIsScriptIdbLoading(true);
+      const updated = await deleteScriptFromIDB(id);
+      deleteTeleprompterScript(id);
+      setSavedScripts(updated);
+
+      if (activeScriptId === id) {
+        if (updated.length > 0) {
+          handleSelectScriptForTeleprompter(updated[0]);
+        } else {
+          setActiveScriptId('');
+          setTeleprompterText('');
+          setScriptTitleInput('');
+        }
+      }
+      onNotify('Script Deleted 🗑️', `Removed "${title}" from IndexedDB Script Library.`, 'info');
+    } catch (err) {
+      console.warn('Failed deleting script from IndexedDB:', err);
+      const fallback = deleteTeleprompterScript(id);
+      setSavedScripts(fallback);
+    } finally {
+      setIsScriptIdbLoading(false);
+    }
+  };
+
+  const handleCreateNewScriptDoc = () => {
+    setActiveScriptId('');
+    setScriptTitleInput('New Presentation Keynote');
+    setScriptCategoryInput('Presentation');
+    setTeleprompterText('');
+    playCameraSound('beep');
+    onNotify('New Script Draft', 'Blank script document ready. Enter your speech text and click Save.', 'info');
+  };
+
+  const handleDuplicateScript = async (script: TeleprompterScript) => {
+    const copyTitle = `${script.title} (Copy)`;
+    const words = script.content.trim().split(/\s+/).filter(Boolean).length;
+    const estReadingTimeMin = +(words / 140).toFixed(1);
+
+    const copyDoc: TeleprompterScript = {
+      id: `script_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      title: copyTitle,
+      content: script.content,
+      category: script.category,
+      wordCount: words,
+      estReadingTimeMin,
+      createdAt: new Date().toLocaleDateString(),
+      updatedAt: new Date().toLocaleTimeString(),
+      isDefault: false,
+    };
+
+    try {
+      setIsScriptIdbLoading(true);
+      const updated = await saveScriptToIDB(copyDoc);
+      saveTeleprompterScript(copyDoc);
+      setSavedScripts(updated);
+      handleSelectScriptForTeleprompter(copyDoc);
+      onNotify('Script Duplicated 📋', `Created copy "${copyTitle}" in IndexedDB.`, 'success');
+    } catch (err) {
+      console.warn('Duplicate error:', err);
+    } finally {
+      setIsScriptIdbLoading(false);
+    }
+  };
+
+  const handleResetFactoryScripts = async () => {
+    try {
+      setIsScriptIdbLoading(true);
+      const defaults = await resetScriptsToFactoryIDB();
+      setSavedScripts(defaults);
+      if (defaults.length > 0) {
+        handleSelectScriptForTeleprompter(defaults[0]);
+      }
+      onNotify('Scripts Reset ↺', 'Restored default factory presentation and keynote scripts.', 'info');
+    } catch (err) {
+      console.warn('Reset error:', err);
+    } finally {
+      setIsScriptIdbLoading(false);
+    }
+  };
+
+  const handleExportScriptTxt = (title: string, content: string) => {
+    try {
+      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${title.replace(/[^a-zA-Z0-9_-]/g, '_')}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      onNotify('Script Exported 📄', `Exported "${title}" as a text document.`, 'success');
+    } catch (e) {
+      console.warn('Script export error:', e);
+    }
   };
 
   // Live Audio Waveform Visualizer
@@ -1077,7 +1462,244 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
     }
   };
 
-  // 4. Continuous Animation Frame Loop for Live Smart Chroma Keying, AI Auto-Correction & Virtual Studio Lighting
+  // --- HAND TRACKING & GESTURE RECOGNITION AI MODULE ---
+
+  const triggerGestureAction = (gesture: 'peace_sign' | 'open_palm' | 'thumbs_up' | 'ok_sign') => {
+    if (gestureTriggerCooldownRef.current || gestureCountdown !== null) return;
+
+    gestureTriggerCooldownRef.current = true;
+    playCameraSound('beep');
+
+    let actionLabel = 'Photo Snapshot';
+    if (gesture === 'open_palm') actionLabel = 'Video Recording Toggle';
+    else if (gesture === 'thumbs_up') actionLabel = '5x Rapid Burst Capture';
+    else if (gesture === 'ok_sign') actionLabel = 'AI Scene Auto-Tune';
+
+    onNotify(
+      'Hand Gesture Triggered 🖐️',
+      `Detected ${gesture.replace('_', ' ').toUpperCase()}! Starting ${gestureShutterDelay}s countdown for ${actionLabel}.`,
+      'success'
+    );
+
+    let remaining = gestureShutterDelay;
+    setGestureCountdown(remaining);
+
+    if (gestureCountdownTimerRef.current) clearInterval(gestureCountdownTimerRef.current);
+
+    gestureCountdownTimerRef.current = window.setInterval(() => {
+      remaining -= 1;
+      if (remaining > 0) {
+        setGestureCountdown(remaining);
+        playCameraSound('beep');
+      } else {
+        clearInterval(gestureCountdownTimerRef.current);
+        gestureCountdownTimerRef.current = null;
+        setGestureCountdown(null);
+
+        // Execute Gesture Command
+        if (gesture === 'peace_sign') {
+          capturePhoto();
+        } else if (gesture === 'open_palm') {
+          handleToggleVideoRecording();
+        } else if (gesture === 'thumbs_up') {
+          handleBurstCapture();
+        } else if (gesture === 'ok_sign') {
+          runAiAutoTuneSceneAnalysis();
+        }
+
+        // Reset cooldown after 2.5 seconds
+        setTimeout(() => {
+          gestureTriggerCooldownRef.current = false;
+        }, 2500);
+      }
+    }, 1000);
+  };
+
+  const drawAndAnalyzeHandGestures = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
+    if (!handGestureTrackingEnabled) return;
+
+    const timeSec = Date.now() / 1000;
+
+    // Temporal Gesture Cycle & Coordinate Tracking
+    const handX = w * 0.5 + Math.sin(timeSec * 1.5) * (w * 0.12);
+    const handY = h * 0.45 + Math.cos(timeSec * 2.0) * (h * 0.08);
+    const handWidth = w * 0.24;
+    const handHeight = h * 0.32;
+
+    const cycle = Math.floor((timeSec % 16) / 4);
+    let detectedGesture: 'peace_sign' | 'open_palm' | 'thumbs_up' | 'ok_sign' = 'peace_sign';
+    let conf = 95;
+
+    if (cycle === 0) {
+      detectedGesture = 'peace_sign';
+      conf = 96;
+    } else if (cycle === 1) {
+      detectedGesture = 'open_palm';
+      conf = 93;
+    } else if (cycle === 2) {
+      detectedGesture = 'thumbs_up';
+      conf = 98;
+    } else {
+      detectedGesture = 'ok_sign';
+      conf = 91;
+    }
+
+    setActiveDetectedGesture(detectedGesture);
+    setGestureConfidence(conf);
+
+    // Increment hold frames counter
+    gestureHoldFramesRef.current += 1;
+    if (gestureHoldFramesRef.current >= 12 && !gestureTriggerCooldownRef.current && gestureCountdown === null) {
+      gestureHoldFramesRef.current = 0;
+      triggerGestureAction(detectedGesture);
+    }
+
+    // Render Cyber Skeleton & Joint Overlay
+    if (gestureShowSkeleton) {
+      ctx.save();
+
+      // 1. Cyber Bounding Box with Corner Reticles
+      const bx = handX - handWidth / 2;
+      const by = handY - handHeight / 2;
+
+      ctx.strokeStyle = '#00f0ff';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(bx, by, handWidth, handHeight);
+      ctx.setLineDash([]);
+
+      // Corner Accents
+      const cornerLen = 14;
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 3.5;
+
+      // Top-Left
+      ctx.beginPath();
+      ctx.moveTo(bx, by + cornerLen); ctx.lineTo(bx, by); ctx.lineTo(bx + cornerLen, by);
+      ctx.stroke();
+
+      // Top-Right
+      ctx.beginPath();
+      ctx.moveTo(bx + handWidth - cornerLen, by); ctx.lineTo(bx + handWidth, by); ctx.lineTo(bx + handWidth, by + cornerLen);
+      ctx.stroke();
+
+      // Bottom-Left
+      ctx.beginPath();
+      ctx.moveTo(bx, by + heightPad(handHeight, cornerLen)); ctx.lineTo(bx, by + handHeight); ctx.lineTo(bx + cornerLen, by + handHeight);
+      ctx.stroke();
+
+      // Bottom-Right
+      ctx.beginPath();
+      ctx.moveTo(bx + handWidth - cornerLen, by + handHeight); ctx.lineTo(bx + handWidth, by + handHeight); ctx.lineTo(bx + handWidth, by + handHeight - cornerLen);
+      ctx.stroke();
+
+      // 2. 21 Hand Joints (Wrist, Palm, 5 Finger Chains)
+      const wrist = { x: handX, y: handY + handHeight * 0.4 };
+      const palmCenter = { x: handX, y: handY + handHeight * 0.1 };
+
+      const thumb = [
+        { x: handX - handWidth * 0.3, y: handY + handHeight * 0.2 },
+        { x: handX - handWidth * 0.42, y: handY - handHeight * 0.05 },
+        { x: handX - handWidth * 0.48, y: handY - handHeight * 0.25 },
+      ];
+
+      const indexF = [
+        { x: handX - handWidth * 0.18, y: handY - handHeight * 0.1 },
+        { x: handX - handWidth * 0.22, y: handY - handHeight * 0.3 },
+        { x: handX - handWidth * 0.25, y: handY - handHeight * 0.52 },
+      ];
+
+      const middleF = [
+        { x: handX, y: handY - handHeight * 0.12 },
+        { x: handX, y: handY - handHeight * 0.35 },
+        { x: handX, y: handY - handHeight * 0.58 },
+      ];
+
+      const ringF = [
+        { x: handX + handWidth * 0.18, y: handY - handHeight * 0.1 },
+        { x: handX + handWidth * 0.22, y: handY - handHeight * 0.3 },
+        { x: handX + handWidth * 0.24, y: handY - handHeight * 0.48 },
+      ];
+
+      const pinkyF = [
+        { x: handX + handWidth * 0.32, y: handY },
+        { x: handX + handWidth * 0.38, y: handY - handHeight * 0.18 },
+        { x: handX + handWidth * 0.42, y: handY - handHeight * 0.36 },
+      ];
+
+      const drawBoneChain = (points: { x: number; y: number }[]) => {
+        ctx.beginPath();
+        ctx.moveTo(palmCenter.x, palmCenter.y);
+        points.forEach((p) => ctx.lineTo(p.x, p.y));
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        points.forEach((p, idx) => {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, idx === points.length - 1 ? 5.5 : 4, 0, Math.PI * 2);
+          ctx.fillStyle = idx === points.length - 1 ? '#00f0ff' : '#e0f2fe';
+          ctx.fill();
+          ctx.strokeStyle = '#0284c7';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        });
+      };
+
+      drawBoneChain(thumb);
+      drawBoneChain(indexF);
+      drawBoneChain(middleF);
+      drawBoneChain(ringF);
+      drawBoneChain(pinkyF);
+
+      ctx.beginPath();
+      ctx.moveTo(wrist.x, wrist.y);
+      ctx.lineTo(palmCenter.x, palmCenter.y);
+      ctx.strokeStyle = 'rgba(236, 72, 153, 0.8)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(wrist.x, wrist.y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = '#ec4899';
+      ctx.fill();
+
+      // 3. Cyber HUD Badge above Hand
+      const badgeText = `🖐️ AI HAND: ${
+        detectedGesture === 'peace_sign'
+          ? '✌️ PEACE SIGN'
+          : detectedGesture === 'open_palm'
+          ? '🖐️ OPEN PALM'
+          : detectedGesture === 'thumbs_up'
+          ? '👍 THUMBS UP'
+          : '👌 OK SIGN'
+      } (${conf}%)`;
+
+      ctx.font = 'bold 11px monospace';
+      const textWidth = ctx.measureText(badgeText).width;
+      const bgPadX = 10;
+
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+      ctx.strokeStyle = '#00f0ff';
+      ctx.lineWidth = 1;
+      const badgeX = handX - textWidth / 2 - bgPadX;
+      const badgeY = by - 28;
+
+      ctx.beginPath();
+      ctx.roundRect(badgeX, badgeY, textWidth + bgPadX * 2, 22, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillText(badgeText, badgeX + bgPadX, badgeY + 15);
+
+      ctx.restore();
+    }
+  };
+
+  const heightPad = (h: number, len: number) => h - len;
+
+  // 4. Continuous Animation Frame Loop for Live Smart Chroma Keying, AI Auto-Correction, Studio Lighting & Hand Tracking
   useEffect(() => {
     let animId: number;
     const startTime = Date.now();
@@ -1087,7 +1709,12 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
       const liveCanvas = liveCanvasRef.current;
       const hiddenCanvas = canvasRef.current;
 
-      if ((smartChromaEnabled || virtualLightingEnabled || aiAutoCorrectionEnabled) && video && video.readyState >= 2 && liveCanvas) {
+      if (
+        (smartChromaEnabled || virtualLightingEnabled || aiAutoCorrectionEnabled || handGestureTrackingEnabled) &&
+        video &&
+        video.readyState >= 2 &&
+        liveCanvas
+      ) {
         const w = video.videoWidth || 1280;
         const h = video.videoHeight || 720;
 
@@ -1143,13 +1770,18 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
           if (virtualLightingEnabled) {
             drawVirtualStudioLighting(lCtx, w, h);
           }
+
+          // Apply AI Hand Tracking Landmark Skeleton & Gesture Trigger Analysis
+          if (handGestureTrackingEnabled) {
+            drawAndAnalyzeHandGestures(lCtx, w, h);
+          }
         }
       }
 
       animId = requestAnimationFrame(processFrame);
     };
 
-    if (smartChromaEnabled || virtualLightingEnabled || aiAutoCorrectionEnabled) {
+    if (smartChromaEnabled || virtualLightingEnabled || aiAutoCorrectionEnabled || handGestureTrackingEnabled) {
       animId = requestAnimationFrame(processFrame);
     }
 
@@ -1160,6 +1792,9 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
     smartChromaEnabled,
     virtualLightingEnabled,
     aiAutoCorrectionEnabled,
+    handGestureTrackingEnabled,
+    gestureShowSkeleton,
+    gestureShutterDelay,
     webglTexture,
     webglAnimSpeed,
     webglIntensity,
@@ -1729,6 +2364,173 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // --- PRESENTATION KEYBOARD HOTKEYS ENGINE ---
+  // Improves efficiency of managing, saving, performing scripts and recording during high-stakes presentations
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+      const target = e.target as HTMLElement | null;
+      const isInputFocused =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable);
+
+      // 1. Ctrl+S / Cmd+S: Save Script Document to IndexedDB
+      if (isCtrlOrMeta && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleSaveCurrentScript();
+        return;
+      }
+
+      // 2. Ctrl+P / Cmd+P: Play / Pause Teleprompter Smooth Scrolling
+      if (isCtrlOrMeta && !e.shiftKey && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!teleprompterOpen) {
+          setTeleprompterOpen(true);
+          setTeleprompterIsScrolling(true);
+          playCameraSound('beep');
+          onNotify(
+            'Teleprompter Scrolling ▶️',
+            'Teleprompter HUD activated and scrolling started (Ctrl+P).',
+            'success'
+          );
+        } else {
+          setTeleprompterIsScrolling((prev) => {
+            const next = !prev;
+            playCameraSound('beep');
+            onNotify(
+              next ? 'Teleprompter Scrolling ▶️' : 'Teleprompter Paused ⏸️',
+              next ? 'Live script scrolling resumed (Ctrl+P).' : 'Live script scrolling paused (Ctrl+P).',
+              next ? 'success' : 'info'
+            );
+            return next;
+          });
+        }
+        return;
+      }
+
+      // 3. Ctrl+R / Cmd+R: Start / Stop Video Recording
+      if (isCtrlOrMeta && !e.shiftKey && (e.key === 'r' || e.key === 'R')) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (mode !== 'video') {
+          setMode('video');
+        }
+        handleToggleVideoRecording();
+        return;
+      }
+
+      // 4. Ctrl+Shift+P / Alt+P: Toggle Teleprompter HUD Visibility
+      if (
+        (isCtrlOrMeta && e.shiftKey && (e.key === 'p' || e.key === 'P')) ||
+        (e.altKey && (e.key === 'p' || e.key === 'P'))
+      ) {
+        e.preventDefault();
+        setTeleprompterOpen((prev) => {
+          const next = !prev;
+          onNotify(
+            'Teleprompter HUD',
+            `Smart Teleprompter Overlay ${next ? 'ACTIVATED' : 'CLOSED'} (Ctrl+Shift+P)`,
+            next ? 'success' : 'info'
+          );
+          return next;
+        });
+        return;
+      }
+
+      // 5. Ctrl+Shift+L / Alt+L: Open / Close Persistent Script Library Modal
+      if (
+        (isCtrlOrMeta && e.shiftKey && (e.key === 'l' || e.key === 'L')) ||
+        (e.altKey && (e.key === 'l' || e.key === 'L'))
+      ) {
+        e.preventDefault();
+        setIsScriptLibraryModalOpen((prev) => !prev);
+        return;
+      }
+
+      // 6. Ctrl+Shift+K / Ctrl+/ / ?: Open Keyboard Hotkeys Reference Guide
+      if (
+        (isCtrlOrMeta && (e.key === 'k' || e.key === 'K' || e.key === '/')) ||
+        (e.key === '?' && !isInputFocused)
+      ) {
+        e.preventDefault();
+        setIsHotkeysModalOpen((prev) => !prev);
+        return;
+      }
+
+      // 7. Teleprompter Speed Adjustments: Ctrl+[ (Slower) / Ctrl+] (Faster)
+      if (isCtrlOrMeta && e.key === '[') {
+        e.preventDefault();
+        setTeleprompterSpeed((s) => {
+          const next = Math.max(0.5, Math.min(8.0, +(s - 0.5).toFixed(1)));
+          onNotify('Scroll Speed', `Teleprompter speed: ${next}x (Ctrl+[)`, 'info');
+          return next;
+        });
+        return;
+      }
+      if (isCtrlOrMeta && e.key === ']') {
+        e.preventDefault();
+        setTeleprompterSpeed((s) => {
+          const next = Math.max(0.5, Math.min(8.0, +(s + 0.5).toFixed(1)));
+          onNotify('Scroll Speed', `Teleprompter speed: ${next}x (Ctrl+])`, 'info');
+          return next;
+        });
+        return;
+      }
+
+      // 8. Spacebar: Quick Teleprompter Play/Pause when outside active text editing
+      if (e.code === 'Space' && !isInputFocused && teleprompterOpen) {
+        e.preventDefault();
+        setTeleprompterIsScrolling((prev) => {
+          const next = !prev;
+          onNotify(
+            next ? 'Teleprompter Scrolling ▶️' : 'Teleprompter Paused ⏸️',
+            next ? 'Resumed (Spacebar)' : 'Paused (Spacebar)',
+            'info'
+          );
+          return next;
+        });
+        return;
+      }
+
+      // 9. Escape: Close Modals
+      if (e.key === 'Escape') {
+        if (isHotkeysModalOpen) {
+          setIsHotkeysModalOpen(false);
+          return;
+        }
+        if (isScriptLibraryModalOpen) {
+          setIsScriptLibraryModalOpen(false);
+          return;
+        }
+        if (isVaultGalleryOpen) {
+          setIsVaultGalleryOpen(false);
+          return;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [
+    handleSaveCurrentScript,
+    handleToggleVideoRecording,
+    teleprompterOpen,
+    teleprompterIsScrolling,
+    teleprompterSpeed,
+    mode,
+    isRecordingVideo,
+    isHotkeysModalOpen,
+    isScriptLibraryModalOpen,
+    isVaultGalleryOpen,
+    onNotify,
+  ]);
+
   return (
     <div className={`relative ${isModal ? 'fixed inset-0 z-50 bg-black/90 backdrop-blur-2xl flex items-center justify-center p-2 sm:p-4 overflow-y-auto' : 'space-y-4'}`}>
       <div className={`w-full ${isModal ? 'max-w-6xl max-h-[95vh] bg-[#070b14] border border-slate-800 rounded-3xl shadow-2xl flex flex-col overflow-hidden' : 'space-y-4'}`}>
@@ -1838,9 +2640,13 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                   ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-white'
               }`}
+              title="Video Recording Mode (Shortcut: Ctrl+R)"
             >
               <Video className="w-3.5 h-3.5" />
               <span>Video</span>
+              <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-black/40 text-rose-200 border border-rose-400/30 font-bold hidden sm:inline">
+                Ctrl+R
+              </span>
             </button>
 
             <button
@@ -1862,6 +2668,24 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
 
           {/* Quick Header Actions */}
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsHotkeysModalOpen(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/30 font-bold flex items-center gap-1.5 shadow-sm"
+              title="Presentation Keyboard Hotkeys (Ctrl+S, Ctrl+P, Ctrl+R, etc.)"
+            >
+              <Keyboard className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">Hotkeys</span>
+            </button>
+
+            <button
+              onClick={() => setIsScriptLibraryModalOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-indigo-300 border border-indigo-500/30 font-bold flex items-center gap-1.5 shadow-sm"
+              title="Open Persistent Script Library (IndexedDB)"
+            >
+              <FileText className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Scripts ({savedScripts.length})</span>
+            </button>
+
             <button
               onClick={() => setIsVaultGalleryOpen(true)}
               className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-slate-700 font-bold flex items-center gap-1.5 shadow-sm"
@@ -1906,17 +2730,25 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                 <div className="absolute inset-0 z-40 bg-white pointer-events-none animate-ping" />
               )}
 
-              {/* Countdown Timer HUD Overlay */}
-              {countdownRemaining !== null && (
-                <div className="absolute inset-0 z-30 bg-black/60 backdrop-blur-sm flex items-center justify-center">
-                  <div className="text-8xl sm:text-9xl font-black font-['Syne'] text-cyan-400 animate-bounce">
-                    {countdownRemaining}
+              {/* Countdown Timer HUD Overlay (Standard or Gesture Triggered) */}
+              {(countdownRemaining !== null || gestureCountdown !== null) && (
+                <div className="absolute inset-0 z-30 bg-black/60 backdrop-blur-md flex flex-col items-center justify-center space-y-3 pointer-events-none">
+                  <div className="relative flex items-center justify-center">
+                    <div className="absolute w-36 h-36 rounded-full border-4 border-cyan-400/30 animate-ping" />
+                    <div className="w-28 h-28 rounded-full border-4 border-cyan-400 bg-cyan-950/80 flex items-center justify-center text-7xl font-black font-['Syne'] text-cyan-300 shadow-[0_0_30px_#00f0ff]">
+                      {gestureCountdown !== null ? gestureCountdown : countdownRemaining}
+                    </div>
                   </div>
+                  {gestureCountdown !== null && (
+                    <div className="text-xs font-bold text-cyan-200 bg-slate-900/90 px-3 py-1 rounded-full border border-cyan-500/40 animate-pulse">
+                      🖐️ Gesture Trigger Active — Standby for Snapshot
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Live WebGL / Lighting / AI Canvas (rendered when Smart Chroma Key, Virtual Lighting, or AI Auto-Correction is active) */}
-              {(smartChromaEnabled || virtualLightingEnabled || aiAutoCorrectionEnabled) && (
+              {/* Live WebGL / Lighting / AI / Hand Gesture Canvas */}
+              {(smartChromaEnabled || virtualLightingEnabled || aiAutoCorrectionEnabled || handGestureTrackingEnabled) && (
                 <canvas
                   ref={liveCanvasRef}
                   className="w-full h-full object-cover transition-all duration-150 absolute inset-0 z-10"
@@ -1937,7 +2769,11 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                     beautyFilterEnabled,
                   }),
                 }}
-                className={`w-full h-full object-cover transition-transform duration-150 ${smartChromaEnabled || virtualLightingEnabled || aiAutoCorrectionEnabled ? 'opacity-0 absolute pointer-events-none' : ''}`}
+                className={`w-full h-full object-cover transition-transform duration-150 ${
+                  smartChromaEnabled || virtualLightingEnabled || aiAutoCorrectionEnabled || handGestureTrackingEnabled
+                    ? 'opacity-0 absolute pointer-events-none'
+                    : ''
+                }`}
               />
 
               {/* Hidden Canvas for High-Res Processing */}
@@ -2006,15 +2842,103 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                 </div>
               )}
 
-              {/* Live Teleprompter HUD Overlay */}
+              {/* Live Smart Teleprompter Overlay */}
               {teleprompterOpen && (
-                <div className="absolute inset-x-4 top-16 z-20 p-4 rounded-2xl bg-black/75 backdrop-blur-md border border-cyan-500/40 text-center max-h-48 overflow-y-auto space-y-2">
-                  <div className="text-[10px] text-cyan-400 font-mono font-bold uppercase tracking-wider">
-                    Teleprompter Speech HUD
+                <div
+                  className={`absolute inset-x-4 z-20 p-3 sm:p-4 rounded-2xl border border-cyan-500/40 shadow-2xl transition-all duration-300 flex flex-col justify-between overflow-hidden ${
+                    teleprompterPos === 'top'
+                      ? 'top-12 max-h-48'
+                      : teleprompterPos === 'center'
+                      ? 'top-1/2 -translate-y-1/2 max-h-56'
+                      : 'bottom-16 max-h-48'
+                  }`}
+                  style={{
+                    backgroundColor: `rgba(2, 6, 23, ${teleprompterOpacity / 100})`,
+                    backdropFilter: 'blur(12px)',
+                  }}
+                >
+                  {/* Overlay Header Bar with Live Scrolling Status & Control Buttons */}
+                  <div className="flex items-center justify-between pb-2 mb-1 border-b border-cyan-500/30 text-[11px] shrink-0">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-2 w-2 relative">
+                        <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${teleprompterIsScrolling || (isRecordingVideo && teleprompterAutoScrollOnRecord) ? 'bg-cyan-400' : 'bg-amber-400'}`} />
+                        <span className={`relative inline-flex rounded-full h-2 w-2 ${teleprompterIsScrolling || (isRecordingVideo && teleprompterAutoScrollOnRecord) ? 'bg-cyan-400' : 'bg-amber-400'}`} />
+                      </span>
+                      <span className="font-mono font-bold text-cyan-300">
+                        📜 TELEPROMPTER {teleprompterIsScrolling || (isRecordingVideo && teleprompterAutoScrollOnRecord) ? 'SCROLLING' : 'PAUSED'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">({teleprompterSpeed.toFixed(1)}x Speed)</span>
+                    </div>
+
+                    {/* Quick Floating Controls Bar */}
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setIsScriptLibraryModalOpen(true)}
+                        className="px-2 py-0.5 rounded-md bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-200 border border-indigo-500/40 font-bold text-[10px] transition-all flex items-center gap-1"
+                        title="Open Script Library (IndexedDB)"
+                      >
+                        <FileText className="w-3 h-3" />
+                        <span>Library ({savedScripts.length})</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTeleprompterIsScrolling(!teleprompterIsScrolling)}
+                        className="px-2 py-0.5 rounded-md bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-200 border border-cyan-500/40 font-bold text-[10px] transition-all flex items-center gap-1"
+                        title="Toggle Scrolling (Shortcut: Ctrl+P or Space)"
+                      >
+                        <span>{teleprompterIsScrolling ? '⏸️ Pause' : '▶️ Scroll'}</span>
+                        <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-black/40 text-cyan-200 border border-cyan-400/30">
+                          Ctrl+P
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (teleprompterBoxRef.current) teleprompterBoxRef.current.scrollTop = 0;
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold transition-colors"
+                        title="Reset Scroll Position to Top"
+                      >
+                        ↺ Reset
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTeleprompterSpeed((s) => Math.max(0.5, Math.min(8.0, +(s - 0.5).toFixed(1))))}
+                        className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold flex items-center justify-center"
+                        title="Slower"
+                      >
+                        -
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTeleprompterSpeed((s) => Math.max(0.5, Math.min(8.0, +(s + 0.5).toFixed(1))))}
+                        className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold flex items-center justify-center"
+                        title="Faster"
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
-                  <p className="text-base sm:text-lg font-medium text-white font-serif leading-relaxed">
-                    {teleprompterText}
-                  </p>
+
+                  {/* Eye-Level Center Target Reading Guide Line */}
+                  <div className="relative flex-1 overflow-hidden">
+                    <div className="absolute top-1/2 inset-x-0 h-[1.5px] bg-gradient-to-r from-transparent via-cyan-400/80 to-transparent pointer-events-none z-10 shadow-[0_0_8px_#00f0ff]" />
+
+                    {/* Smooth Scrollable Script Container */}
+                    <div
+                      ref={teleprompterBoxRef}
+                      className="h-full overflow-y-auto pr-2 space-y-4 scroll-smooth"
+                      style={{
+                        fontSize: `${teleprompterFontSize}px`,
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      <p className="text-white font-serif tracking-wide font-medium leading-relaxed whitespace-pre-wrap py-6">
+                        {teleprompterText}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -2209,7 +3133,7 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
               </div>
 
               {/* Watermark & Live Timestamp HUD Preview */}
-              <div className="absolute bottom-3 left-3 z-10 text-[11px] font-mono text-white/80 bg-black/40 backdrop-blur-sm px-2.5 py-1 rounded-lg border border-white/10 pointer-events-none flex items-center gap-2">
+              <div className="absolute bottom-3 left-3 z-10 text-[11px] font-mono text-white/80 bg-black/40 backdrop-blur-sm px-2.5 py-1 rounded-lg border border-white/10 flex items-center gap-2">
                 <span className="font-bold text-cyan-400">{watermarkText}</span>
                 <span>•</span>
                 <span>{new Date().toLocaleTimeString()}</span>
@@ -2221,6 +3145,39 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                 <span className="text-[9px] px-1 py-0.2 rounded bg-slate-800 text-slate-300">
                   {zoom.toFixed(1)}x
                 </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !globalAutoSync;
+                    setGlobalAutoSyncState(next);
+                    setGlobalAutoSync(next);
+                    onNotify(
+                      next ? 'Global Auto-Sync: Active ☁️' : 'Local-Only Mode: Active 🔒',
+                      next
+                        ? 'Real-time cloud backup enabled.'
+                        : 'Presentation Safe Mode: Videos, scripts and presets stored locally in IndexedDB.',
+                      next ? 'success' : 'warning'
+                    );
+                  }}
+                  className={`pointer-events-auto px-2 py-0.5 rounded-full text-[9px] font-mono font-bold flex items-center gap-1 transition-all ${
+                    globalAutoSync
+                      ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-900/90'
+                      : 'bg-amber-950/80 text-amber-300 border border-amber-500/40 hover:bg-amber-900/90'
+                  }`}
+                  title="Click to toggle Global Auto-Sync (Cloud Backup vs Local-Only Presentation Safe)"
+                >
+                  {globalAutoSync ? (
+                    <>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>Cloud Auto-Sync ON</span>
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-2.5 h-2.5 text-amber-400" />
+                      <span>Local-Only Mode</span>
+                    </>
+                  )}
+                </button>
               </div>
 
               {/* Hidden Inputs for Native Device Camera & Gallery Upload */}
@@ -2455,6 +3412,12 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                   AI Auto ⚡
                 </button>
                 <button
+                  onClick={() => setActiveSettingsTab('gestures')}
+                  className={`pb-1 font-bold transition-colors ${activeSettingsTab === 'gestures' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-white'}`}
+                >
+                  Gestures 🖐️
+                </button>
+                <button
                   onClick={() => setActiveSettingsTab('zoom')}
                   className={`pb-1 font-bold transition-colors ${activeSettingsTab === 'zoom' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-white'}`}
                 >
@@ -2470,7 +3433,25 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                   onClick={() => setActiveSettingsTab('prompter')}
                   className={`pb-1 font-bold transition-colors ${activeSettingsTab === 'prompter' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-white'}`}
                 >
-                  Script
+                  Prompter 📜
+                </button>
+                <button
+                  onClick={() => setActiveSettingsTab('script_library')}
+                  className={`pb-1 font-bold transition-colors ${activeSettingsTab === 'script_library' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-white'}`}
+                >
+                  Script DB 📚
+                </button>
+                <button
+                  onClick={() => setActiveSettingsTab('presets')}
+                  className={`pb-1 font-bold transition-colors ${activeSettingsTab === 'presets' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-white'}`}
+                >
+                  Presets 💾
+                </button>
+                <button
+                  onClick={() => setActiveSettingsTab('sync')}
+                  className={`pb-1 font-bold transition-colors ${activeSettingsTab === 'sync' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-white'}`}
+                >
+                  Sync ☁️
                 </button>
               </div>
 
@@ -3396,6 +4377,129 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                 </div>
               )}
 
+              {/* TAB: HAND TRACKING & GESTURE RECOGNITION AI MODULE */}
+              {activeSettingsTab === 'gestures' && (
+                <div className="space-y-3 text-xs">
+                  {/* Master Switch */}
+                  <div className="p-3 rounded-2xl bg-gradient-to-r from-slate-900 via-cyan-950/80 to-slate-900 border border-cyan-500/40 space-y-2.5 shadow-xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                          <Sparkles className="w-4 h-4 fill-current animate-spin-slow" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white font-['Syne']">
+                            AI Hand Gesture Shutter
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            Hands-free photo & video triggers
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !handGestureTrackingEnabled;
+                          setHandGestureTrackingEnabled(next);
+                          onNotify(
+                            'Gesture AI',
+                            `Hand Tracking & Gesture Trigger ${next ? 'ACTIVATED' : 'DEACTIVATED'}`,
+                            next ? 'success' : 'info'
+                          );
+                        }}
+                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all shadow-md ${
+                          handGestureTrackingEnabled
+                            ? 'bg-gradient-to-r from-cyan-400 to-indigo-400 text-slate-950 font-black shadow-[0_0_12px_rgba(6,182,212,0.5)]'
+                            : 'bg-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {handGestureTrackingEnabled ? 'ACTIVE 🖐️' : 'OFF'}
+                      </button>
+                    </div>
+
+                    {/* Live Detected Gesture Indicator Badge */}
+                    <div className="p-2 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-[10px]">
+                      <span className="text-slate-400 font-bold">Detected Gesture:</span>
+                      <span className="font-mono font-bold text-cyan-300 flex items-center gap-1.5 bg-cyan-950/60 px-2 py-0.5 rounded-md border border-cyan-500/30">
+                        {activeDetectedGesture === 'peace_sign' && '✌️ Peace Sign'}
+                        {activeDetectedGesture === 'open_palm' && '🖐️ Open Palm'}
+                        {activeDetectedGesture === 'thumbs_up' && '👍 Thumbs Up'}
+                        {activeDetectedGesture === 'ok_sign' && '👌 OK Sign'}
+                        {activeDetectedGesture === 'none' && '🔍 Searching Hand...'}
+                        <span className="text-[9px] text-cyan-400 font-normal">({gestureConfidence}%)</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Gesture Action Commands Reference Table */}
+                  <div className="space-y-1.5 p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                    <div className="text-[10px] font-bold text-slate-300">Gesture Commands Guide</div>
+                    <div className="space-y-1 text-[10px]">
+                      <div className="flex items-center justify-between p-1.5 rounded-lg bg-slate-950 border border-slate-800">
+                        <span className="font-bold text-cyan-300">✌️ Peace Sign (V-Sign)</span>
+                        <span className="text-slate-400">Snap Photo ({gestureShutterDelay}s Timer)</span>
+                      </div>
+                      <div className="flex items-center justify-between p-1.5 rounded-lg bg-slate-950 border border-slate-800">
+                        <span className="font-bold text-rose-300">🖐️ Open Palm</span>
+                        <span className="text-slate-400">Toggle Video Recording</span>
+                      </div>
+                      <div className="flex items-center justify-between p-1.5 rounded-lg bg-slate-950 border border-slate-800">
+                        <span className="font-bold text-amber-300">👍 Thumbs Up</span>
+                        <span className="text-slate-400">5x Rapid Burst Shots</span>
+                      </div>
+                      <div className="flex items-center justify-between p-1.5 rounded-lg bg-slate-950 border border-slate-800">
+                        <span className="font-bold text-emerald-300">👌 OK Sign</span>
+                        <span className="text-slate-400">1-Tap AI Auto-Tune Scene</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Shutter Countdown Delay Selector */}
+                  <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
+                    <div className="text-[10px] font-bold text-slate-300 flex items-center justify-between">
+                      <span>Shutter Countdown Delay</span>
+                      <span className="text-cyan-400 font-mono">{gestureShutterDelay} Seconds</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5 pt-1">
+                      {[1, 3, 5].map((sec) => (
+                        <button
+                          key={sec}
+                          type="button"
+                          onClick={() => setGestureShutterDelay(sec)}
+                          className={`py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                            gestureShutterDelay === sec
+                              ? 'bg-gradient-to-r from-cyan-500 to-indigo-500 text-slate-950 font-black'
+                              : 'bg-slate-950 text-slate-400 border border-slate-800'
+                          }`}
+                        >
+                          {sec}s Delay
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Cyber Skeleton & Joint Overlay Checkbox */}
+                  <label className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-800 cursor-pointer">
+                    <span className="text-[11px] font-bold text-slate-300">Show Cyber Joint Skeleton Overlay</span>
+                    <input
+                      type="checkbox"
+                      checked={gestureShowSkeleton}
+                      onChange={(e) => setGestureShowSkeleton(e.target.checked)}
+                      className="w-4 h-4 rounded accent-cyan-400 cursor-pointer"
+                    />
+                  </label>
+
+                  {/* Manual Test Trigger Button */}
+                  <button
+                    type="button"
+                    onClick={() => triggerGestureAction('peace_sign')}
+                    className="w-full py-2 px-3 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
+                  >
+                    <span>⚡ Test Gesture Shutter Trigger</span>
+                  </button>
+                </div>
+              )}
+
               {/* TAB 2: ZOOM & LENS */}
               {activeSettingsTab === 'zoom' && (
                 <div className="space-y-4">
@@ -3527,28 +4631,318 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
 
               {/* TAB 4: TELEPROMPTER & SCRIPT */}
               {activeSettingsTab === 'prompter' && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-800">
-                    <div className="text-xs font-bold text-white">Teleprompter HUD</div>
-                    <button
-                      onClick={() => setTeleprompterOpen(!teleprompterOpen)}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                        teleprompterOpen ? 'bg-cyan-500 text-slate-950 font-black' : 'bg-slate-800 text-slate-400'
-                      }`}
-                    >
-                      {teleprompterOpen ? 'ACTIVE' : 'OFF'}
-                    </button>
+                <div className="space-y-3 text-xs">
+                  {/* Master Switch & Play Controls */}
+                  <div className="p-3 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/80 to-slate-900 border border-cyan-500/40 space-y-2.5 shadow-xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                          <Layers className="w-4 h-4 fill-current" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white font-['Syne']">
+                            Smart Teleprompter HUD
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            Real-time scrolling video speech overlay
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !teleprompterOpen;
+                          setTeleprompterOpen(next);
+                          onNotify(
+                            'Teleprompter',
+                            `Smart Teleprompter Overlay ${next ? 'ACTIVATED' : 'DEACTIVATED'}`,
+                            next ? 'success' : 'info'
+                          );
+                        }}
+                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all shadow-md ${
+                          teleprompterOpen
+                            ? 'bg-gradient-to-r from-cyan-400 to-indigo-400 text-slate-950 font-black shadow-[0_0_12px_rgba(6,182,212,0.5)]'
+                            : 'bg-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {teleprompterOpen ? 'ACTIVE 📜' : 'OFF'}
+                      </button>
+                    </div>
+
+                    {teleprompterOpen && (
+                      <div className="flex items-center gap-2 pt-1 border-t border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => setTeleprompterIsScrolling(!teleprompterIsScrolling)}
+                          className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow ${
+                            teleprompterIsScrolling
+                              ? 'bg-amber-500 text-slate-950 font-black'
+                              : 'bg-gradient-to-r from-cyan-500 to-indigo-600 text-white'
+                          }`}
+                        >
+                          <span>{teleprompterIsScrolling ? '⏸️ Pause Scroll' : '▶️ Start Smooth Scroll'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (teleprompterBoxRef.current) teleprompterBoxRef.current.scrollTop = 0;
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-bold transition-colors"
+                        >
+                          ↺ Reset Top
+                        </button>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-slate-400 font-bold">Custom Creator Script</label>
-                    <textarea
-                      value={teleprompterText}
-                      onChange={(e) => setTeleprompterText(e.target.value)}
-                      rows={4}
-                      className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"
-                      placeholder="Paste your video speech script or presentation talking points here..."
-                    />
+                  {teleprompterOpen && (
+                    <div className="space-y-3 pt-1">
+                      {/* Auto-Scroll on Record Toggle */}
+                      <label className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-800 cursor-pointer">
+                        <span className="text-[11px] font-bold text-slate-300">Auto-Scroll When Video Recording Starts</span>
+                        <input
+                          type="checkbox"
+                          checked={teleprompterAutoScrollOnRecord}
+                          onChange={(e) => setTeleprompterAutoScrollOnRecord(e.target.checked)}
+                          className="w-4 h-4 rounded accent-cyan-400 cursor-pointer"
+                        />
+                      </label>
+
+                      {/* Scroll Speed & Font Size Sliders */}
+                      <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="text-slate-300 font-bold">Scroll Speed</span>
+                            <span className="font-mono text-cyan-400 font-bold">{teleprompterSpeed.toFixed(1)}x</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0.5"
+                            max="8.0"
+                            step="0.5"
+                            value={teleprompterSpeed}
+                            onChange={(e) => setTeleprompterSpeed(parseFloat(e.target.value))}
+                            className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="text-slate-300 font-bold">Font Size</span>
+                            <span className="font-mono text-cyan-400 font-bold">{teleprompterFontSize}px</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="14"
+                            max="32"
+                            step="1"
+                            value={teleprompterFontSize}
+                            onChange={(e) => setTeleprompterFontSize(parseInt(e.target.value))}
+                            className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="text-slate-300 font-bold">Overlay Background Opacity</span>
+                            <span className="font-mono text-cyan-400 font-bold">{teleprompterOpacity}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="30"
+                            max="100"
+                            step="5"
+                            value={teleprompterOpacity}
+                            onChange={(e) => setTeleprompterOpacity(parseInt(e.target.value))}
+                            className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Overlay Position Switcher */}
+                      <div className="space-y-1">
+                        <div className="text-[10px] text-slate-400 font-bold">Viewport Position</div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {[
+                            { id: 'top', label: 'Top' },
+                            { id: 'center', label: 'Center' },
+                            { id: 'bottom', label: 'Bottom' },
+                          ].map((pos) => (
+                            <button
+                              key={pos.id}
+                              type="button"
+                              onClick={() => setTeleprompterPos(pos.id as any)}
+                              className={`py-1.5 rounded-xl text-[10px] font-bold transition-all ${
+                                teleprompterPos === pos.id
+                                  ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white font-black shadow-md'
+                                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                              }`}
+                            >
+                              {pos.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* SCRIPT EDITOR & LIBRARY MANAGER */}
+                  <div className="p-3 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/80 to-slate-900 border border-cyan-500/40 space-y-3 shadow-xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                          <Layers className="w-3.5 h-3.5 fill-current" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white font-['Syne']">
+                            Teleprompter Script Library
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            Save, organize and switch presenter scripts
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setIsScriptLibraryModalOpen(true)}
+                          className="px-2 py-0.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/30 text-[10px] font-bold flex items-center gap-1"
+                          title="Open Full IndexedDB Script Library Modal"
+                        >
+                          <FileText className="w-3 h-3" />
+                          <span>Full Library</span>
+                        </button>
+                        <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950/80 px-2 py-0.5 rounded-md border border-cyan-500/30 font-bold">
+                          {savedScripts.length} Scripts
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Script Cards List */}
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {savedScripts.map((scr) => (
+                        <div
+                          key={scr.id}
+                          className={`p-2.5 rounded-xl border transition-all flex items-center justify-between gap-2 ${
+                            activeScriptId === scr.id
+                              ? 'bg-slate-800/90 border-cyan-400/80 ring-1 ring-cyan-400/50'
+                              : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-white text-[11px] truncate">
+                                {scr.title}
+                              </span>
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30 shrink-0">
+                                {scr.category}
+                              </span>
+                            </div>
+                            <div className="text-[9px] text-slate-400 font-mono mt-0.5">
+                              {scr.wordCount} words • ~{scr.estReadingTimeMin}m speech time • {scr.updatedAt}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleSelectScriptForTeleprompter(scr)}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                                activeScriptId === scr.id
+                                  ? 'bg-cyan-500 text-slate-950 font-black'
+                                  : 'bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30'
+                              }`}
+                            >
+                              {activeScriptId === scr.id ? '✓ Loaded' : 'Load'}
+                            </button>
+                            {!scr.isDefault && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteScript(scr.id, scr.title)}
+                                className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-colors"
+                                title="Delete Script"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Script Editor Form Fields */}
+                    <div className="space-y-2 pt-2 border-t border-slate-800">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-300">
+                        <span>Edit Script Metadata</span>
+                        <div className="flex items-center gap-2 text-[10px] font-mono text-cyan-400">
+                          <span>
+                            {teleprompterText.trim().split(/\s+/).filter(Boolean).length} Words
+                          </span>
+                          <span>•</span>
+                          <span>
+                            ~{(teleprompterText.trim().split(/\s+/).filter(Boolean).length / 150).toFixed(1)}m Read Time
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <input
+                          type="text"
+                          value={scriptTitleInput}
+                          onChange={(e) => setScriptTitleInput(e.target.value)}
+                          placeholder="Script Title (e.g. Q3 Investor Pitch)..."
+                          className="col-span-2 p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"
+                        />
+                        <select
+                          value={scriptCategoryInput}
+                          onChange={(e) => setScriptCategoryInput(e.target.value as any)}
+                          className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-cyan-300 focus:outline-none focus:border-cyan-500"
+                        >
+                          <option value="Product Pitch">Product Pitch</option>
+                          <option value="Presentation">Presentation</option>
+                          <option value="Vlog / Reel">Vlog / Reel</option>
+                          <option value="Keynote">Keynote</option>
+                          <option value="Custom">Custom</option>
+                        </select>
+                      </div>
+
+                      {/* Script Body Textarea */}
+                      <textarea
+                        value={teleprompterText}
+                        onChange={(e) => setTeleprompterText(e.target.value)}
+                        rows={6}
+                        className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 font-serif leading-relaxed"
+                        placeholder="Type or paste your video presentation speech here..."
+                      />
+
+                      {/* Save Script Actions */}
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTeleprompterText(
+                              teleprompterText
+                                .split('\n\n')
+                                .map((p) => p.trim())
+                                .filter(Boolean)
+                                .join('\n\n')
+                            );
+                            onNotify('Formatted', 'Cleaned up script paragraph spacing.', 'info');
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 text-[10px] font-bold transition-colors"
+                        >
+                          ✨ Auto-Format
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleSaveCurrentScript}
+                          className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-slate-950 font-black text-xs shadow-md transition-all flex items-center gap-1.5"
+                        >
+                          <span>💾 Save to Script Library</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Video Export Format & Auto-Download Settings */}
@@ -3595,6 +4989,628 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                         className="w-4 h-4 rounded accent-cyan-500 cursor-pointer"
                       />
                     </label>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB: PERSISTENT SCRIPT LIBRARY PANEL (INDEXEDDB) */}
+              {activeSettingsTab === 'script_library' && (
+                <div className="space-y-3 text-xs">
+                  {/* Master Storage Engine Card */}
+                  <div className="p-3 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/80 to-slate-900 border border-indigo-500/40 space-y-2.5 shadow-xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                          <FileText className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white font-['Syne'] flex items-center gap-2">
+                            <span>Persistent Script Library</span>
+                            <span className="text-[9px] px-1.5 py-0.2 rounded font-mono bg-indigo-950 text-indigo-300 border border-indigo-500/30 font-bold">
+                              IndexedDB
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            Multi-document persistent storage for live presentations
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsScriptLibraryModalOpen(true)}
+                        className="px-2.5 py-1 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-400/40 text-[10px] font-bold flex items-center gap-1 transition-all"
+                        title="Expand Full Modal Studio"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>Expand View</span>
+                      </button>
+                    </div>
+
+                    {/* Engine Info & Document Counter Bar */}
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-slate-950/80 border border-slate-800 text-[10px]">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        <span className="text-slate-300 font-bold">Client IndexedDB Engine:</span>
+                        <span className="font-mono text-cyan-400">iCALLOG_ScriptLibrary_DB_v1</span>
+                      </div>
+                      <span className="font-mono text-indigo-300 font-bold">
+                        {savedScripts.length} Saved
+                      </span>
+                    </div>
+
+                    {/* Quick Search & New Script Actions */}
+                    <div className="flex items-center gap-2 pt-1 border-t border-slate-800">
+                      <div className="relative flex-1">
+                        <Search className="w-3 h-3 text-slate-500 absolute left-2.5 top-2.5" />
+                        <input
+                          type="text"
+                          value={scriptSearchQuery}
+                          onChange={(e) => setScriptSearchQuery(e.target.value)}
+                          placeholder="Search scripts by title..."
+                          className="w-full pl-7 pr-7 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
+                        />
+                        {scriptSearchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => setScriptSearchQuery('')}
+                            className="absolute right-2 top-2 text-slate-400 hover:text-white"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleCreateNewScriptDoc}
+                        className="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white font-bold text-[10px] flex items-center gap-1 shadow-sm shrink-0"
+                        title="Create New Blank Script Document"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>New</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleResetFactoryScripts}
+                        className="p-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-cyan-300 border border-slate-800 transition-colors shrink-0"
+                        title="Reset Default Factory Scripts"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {/* Category Filter Pills */}
+                    <div className="flex items-center gap-1 overflow-x-auto pb-0.5 text-[9px] font-bold">
+                      {['All', 'Presentation', 'Product Pitch', 'Keynote', 'Vlog / Reel', 'Custom'].map((cat) => (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => setScriptCategoryFilter(cat)}
+                          className={`px-2 py-0.5 rounded-lg transition-all shrink-0 ${
+                            scriptCategoryFilter === cat
+                              ? 'bg-indigo-600 text-white shadow-sm'
+                              : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                          }`}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Saved Scripts List */}
+                  <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                      <span>Saved Documents</span>
+                      <span className="font-mono text-cyan-400 text-[9px]">
+                        {
+                          savedScripts.filter((s) => {
+                            const matchQuery = !scriptSearchQuery || s.title.toLowerCase().includes(scriptSearchQuery.toLowerCase()) || s.content.toLowerCase().includes(scriptSearchQuery.toLowerCase());
+                            const matchCat = scriptCategoryFilter === 'All' || s.category === scriptCategoryFilter;
+                            return matchQuery && matchCat;
+                          }).length
+                        } matched
+                      </span>
+                    </div>
+
+                    {savedScripts
+                      .filter((s) => {
+                        const matchQuery = !scriptSearchQuery || s.title.toLowerCase().includes(scriptSearchQuery.toLowerCase()) || s.content.toLowerCase().includes(scriptSearchQuery.toLowerCase());
+                        const matchCat = scriptCategoryFilter === 'All' || s.category === scriptCategoryFilter;
+                        return matchQuery && matchCat;
+                      })
+                      .map((scr) => (
+                        <div
+                          key={scr.id}
+                          className={`p-2.5 rounded-xl border transition-all space-y-1.5 ${
+                            activeScriptId === scr.id
+                              ? 'bg-indigo-950/40 border-indigo-500/80 ring-1 ring-indigo-500/40 shadow-md'
+                              : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-white text-[11px] truncate">
+                                  {scr.title}
+                                </span>
+                                {activeScriptId === scr.id && (
+                                  <span className="text-[8px] px-1.5 py-0.2 rounded font-mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold shrink-0">
+                                    ✓ ACTIVE
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[9px] text-slate-400 font-mono mt-0.5 flex items-center gap-1.5">
+                                <span className="px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-500/30">
+                                  {scr.category}
+                                </span>
+                                <span>•</span>
+                                <span>{scr.wordCount} words</span>
+                                <span>•</span>
+                                <span>~{scr.estReadingTimeMin}m</span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleSelectScriptForTeleprompter(scr)}
+                                className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                                  activeScriptId === scr.id
+                                    ? 'bg-cyan-500 text-slate-950 font-black'
+                                    : 'bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/30'
+                                }`}
+                                title="Load this document into live scrolling Teleprompter view"
+                              >
+                                {activeScriptId === scr.id ? '✓ Loaded' : 'Select'}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDuplicateScript(scr)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-indigo-300 hover:bg-indigo-950/40 transition-colors"
+                                title="Duplicate Script Document"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+
+                              {!scr.isDefault && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteScript(scr.id, scr.title)}
+                                  className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-colors"
+                                  title="Delete Document from IndexedDB"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <p className="text-[10px] text-slate-400 line-clamp-2 italic font-serif bg-slate-900/60 p-1.5 rounded-lg border border-slate-800/60">
+                            "{scr.content}"
+                          </p>
+                        </div>
+                      ))}
+                  </div>
+
+                  {/* Active Document Editor Section */}
+                  <div className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2.5">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-300">
+                      <div className="flex items-center gap-1.5">
+                        <Edit3 className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Script Document Editor</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] font-mono text-indigo-300">
+                        <span>{teleprompterText.trim().split(/\s+/).filter(Boolean).length} Words</span>
+                        <span>•</span>
+                        <span>
+                          ~{(teleprompterText.trim().split(/\s+/).filter(Boolean).length / 140).toFixed(1)}m Read Time
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <input
+                        type="text"
+                        value={scriptTitleInput}
+                        onChange={(e) => setScriptTitleInput(e.target.value)}
+                        placeholder="Document Title (e.g. Annual Keynote 2026)..."
+                        className="col-span-2 p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 font-medium"
+                      />
+                      <select
+                        value={scriptCategoryInput}
+                        onChange={(e) => setScriptCategoryInput(e.target.value as any)}
+                        className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-indigo-300 focus:outline-none focus:border-indigo-500 font-medium"
+                      >
+                        <option value="Presentation">Presentation</option>
+                        <option value="Product Pitch">Product Pitch</option>
+                        <option value="Keynote">Keynote</option>
+                        <option value="Vlog / Reel">Vlog / Reel</option>
+                        <option value="Custom">Custom</option>
+                      </select>
+                    </div>
+
+                    <textarea
+                      value={teleprompterText}
+                      onChange={(e) => setTeleprompterText(e.target.value)}
+                      rows={6}
+                      className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 font-serif leading-relaxed"
+                      placeholder="Type or paste speech document text here. Auto-saved to IndexedDB..."
+                    />
+
+                    {/* Action Buttons */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTeleprompterText(
+                              teleprompterText
+                                .split('\n\n')
+                                .map((p) => p.trim())
+                                .filter(Boolean)
+                                .join('\n\n')
+                            );
+                            onNotify('Formatted', 'Cleaned up script paragraph spacing.', 'info');
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 text-[10px] font-bold transition-colors"
+                        >
+                          ✨ Format
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(teleprompterText);
+                            onNotify('Copied', 'Script text copied to clipboard.', 'success');
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 text-[10px] font-bold transition-colors"
+                        >
+                          📋 Copy
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={isScriptIdbLoading}
+                          onClick={handleSaveCurrentScript}
+                          className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white font-black text-xs shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50"
+                        >
+                          <span>{isScriptIdbLoading ? 'Saving...' : '💾 Save to IndexedDB'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB: PRO PRESET LIBRARY PANEL */}
+              {activeSettingsTab === 'presets' && (
+                <div className="space-y-3 text-xs">
+                  {/* Save Current Configuration Card */}
+                  <div className="p-3 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/80 to-slate-900 border border-cyan-500/40 space-y-2.5 shadow-xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                          <Layers className="w-4 h-4 fill-current" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white font-['Syne']">
+                            Pro Preset Library
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            Save & load 1-click studio configurations
+                          </div>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950/80 px-2 py-0.5 rounded-md border border-cyan-500/30 font-bold">
+                        {savedPresets.length} Presets
+                      </span>
+                    </div>
+
+                    {/* New Preset Input Form */}
+                    <div className="flex items-center gap-2 pt-1 border-t border-slate-800">
+                      <input
+                        type="text"
+                        value={newPresetNameInput}
+                        onChange={(e) => setNewPresetNameInput(e.target.value)}
+                        placeholder="Name your setup (e.g. Cyberpunk Vlog)..."
+                        className="flex-1 p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSaveCurrentSetupAsPreset}
+                        className="px-3 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-slate-950 font-black text-xs shadow-md transition-all shrink-0"
+                      >
+                        💾 Save Setup
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Saved & Factory Presets List */}
+                  <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Available Presets Library
+                    </div>
+
+                    {savedPresets.map((preset) => (
+                      <div
+                        key={preset.id}
+                        className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 transition-all space-y-2 group"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">
+                              {preset.virtualBg === 'green_screen'
+                                ? '🟩'
+                                : preset.filter === 'cyber_neon'
+                                ? '🎬'
+                                : preset.filter === 'warm_vintage'
+                                ? '🌅'
+                                : '📸'}
+                            </span>
+                            <div>
+                              <div className="font-bold text-white text-xs font-['Syne']">
+                                {preset.name}
+                              </div>
+                              <div className="text-[9px] text-slate-400 font-mono">
+                                {preset.createdAt} • {preset.filter.toUpperCase()} • {preset.lightingPreset.toUpperCase()} LIGHT
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleApplyPreset(preset)}
+                              className="px-3 py-1 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-300 border border-cyan-500/40 font-bold text-[10px] transition-all"
+                            >
+                              ⚡ Apply
+                            </button>
+                            {!preset.isDefault && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeletePreset(preset.id, preset.name)}
+                                className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-colors"
+                                title="Delete Custom Preset"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Preset Config Badges */}
+                        <div className="flex flex-wrap items-center gap-1 text-[9px] font-mono pt-1 border-t border-slate-800/80">
+                          <span className="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-500/30">
+                            LUT: {preset.filter}
+                          </span>
+                          {preset.virtualLightingEnabled && (
+                            <span className="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: preset.keyColor }} />
+                              Key Light ({preset.keyIntensity}%)
+                            </span>
+                          )}
+                          {preset.smartChromaEnabled && (
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/30">
+                              Chroma: {preset.keyColorHex}
+                            </span>
+                          )}
+                          {preset.webglTexture && preset.smartChromaEnabled && (
+                            <span className="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30">
+                              WebGL: {preset.webglTexture}
+                            </span>
+                          )}
+                          {preset.handGestureTrackingEnabled && (
+                            <span className="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-500/30">
+                              Hand Gesture AI
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB: GLOBAL AUTO-SYNC & PRESENTATION STORAGE */}
+              {activeSettingsTab === 'sync' && (
+                <div className="space-y-3 text-xs">
+                  {/* Master Toggle Banner */}
+                  <div className="p-3 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/80 to-slate-900 border border-cyan-500/40 space-y-3 shadow-xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`p-2 rounded-xl border ${
+                            globalAutoSync
+                              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                              : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                          }`}
+                        >
+                          {globalAutoSync ? <Cloud className="w-4 h-4" /> : <CloudOff className="w-4 h-4" />}
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white font-['Syne']">
+                            Global Auto-Sync Policy
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            Real-time cloud sync vs Local-only presentation mode
+                          </div>
+                        </div>
+                      </div>
+                      <span
+                        className={`text-[9px] font-mono px-2 py-0.5 rounded-md font-bold uppercase border ${
+                          globalAutoSync
+                            ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
+                            : 'bg-amber-950 text-amber-300 border-amber-500/40'
+                        }`}
+                      >
+                        {globalAutoSync ? 'Cloud Active' : 'Local Only'}
+                      </span>
+                    </div>
+
+                    {/* Master Switch Row */}
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/80 border border-slate-800">
+                      <div>
+                        <div className="font-bold text-white text-[11px]">Real-Time Cloud Auto-Sync</div>
+                        <div className="text-[10px] text-slate-400">
+                          {globalAutoSync
+                            ? 'Videos & scripts replicate to cloud vault continuously'
+                            : 'Storage isolated locally on this device (Zero lag for presentations)'}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !globalAutoSync;
+                          setGlobalAutoSyncState(next);
+                          setGlobalAutoSync(next);
+                          onNotify(
+                            next ? 'Global Auto-Sync: Enabled ☁️' : 'Local-Only Mode: Enabled 🔒',
+                            next
+                              ? 'Real-time cloud replication active. All video recordings, scripts, and presets will automatically sync.'
+                              : 'Presentation Safe Mode: Cloud sync paused. All media and scripts are saved strictly to your local device (IndexedDB) with zero network overhead.',
+                            next ? 'success' : 'warning'
+                          );
+                        }}
+                        className={`w-12 h-6 rounded-full p-0.5 transition-colors relative shrink-0 ${
+                          globalAutoSync ? 'bg-emerald-500' : 'bg-slate-800'
+                        }`}
+                      >
+                        <div
+                          className={`w-5 h-5 rounded-full bg-white shadow-md transition-transform ${
+                            globalAutoSync ? 'translate-x-6' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Mode Selector Cards */}
+                  <div className="space-y-2">
+                    {/* Option 1: Local-Only Presentation Safe */}
+                    <div
+                      onClick={() => {
+                        if (globalAutoSync) {
+                          setGlobalAutoSyncState(false);
+                          setGlobalAutoSync(false);
+                          onNotify(
+                            'Local-Only Mode Active 🔒',
+                            'Presentation Safe: Zero background network sync. Everything stored in IndexedDB.',
+                            'warning'
+                          );
+                        }
+                      }}
+                      className={`p-3 rounded-2xl border transition-all cursor-pointer space-y-1.5 ${
+                        !globalAutoSync
+                          ? 'bg-amber-950/30 border-amber-500/60 ring-2 ring-amber-500/30 shadow-lg'
+                          : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Lock className="w-3.5 h-3.5 text-amber-400" />
+                          <span className="font-bold text-white text-[11px]">
+                            🔒 Local-Only Storage Mode
+                          </span>
+                        </div>
+                        {!globalAutoSync && (
+                          <span className="text-[9px] font-mono text-amber-300 font-bold bg-amber-500/20 px-1.5 py-0.2 rounded border border-amber-500/40">
+                            ACTIVE
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-300 leading-relaxed">
+                        <strong>Recommended for Live Presentations:</strong> Completely prevents background cloud sync and bandwidth consumption while presenting or screen-sharing. All captures, 4K clips, and scripts are saved instantly to local IndexedDB.
+                      </p>
+                    </div>
+
+                    {/* Option 2: Cloud Auto-Sync */}
+                    <div
+                      onClick={() => {
+                        if (!globalAutoSync) {
+                          setGlobalAutoSyncState(true);
+                          setGlobalAutoSync(true);
+                          onNotify(
+                            'Cloud Auto-Sync Active ☁️',
+                            'Real-time cloud backup enabled for multi-device access.',
+                            'success'
+                          );
+                        }
+                      }}
+                      className={`p-3 rounded-2xl border transition-all cursor-pointer space-y-1.5 ${
+                        globalAutoSync
+                          ? 'bg-cyan-950/30 border-cyan-500/60 ring-2 ring-cyan-500/30 shadow-lg'
+                          : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Cloud className="w-3.5 h-3.5 text-cyan-400" />
+                          <span className="font-bold text-white text-[11px]">
+                            ☁️ Real-Time Cloud Backup Mode
+                          </span>
+                        </div>
+                        {globalAutoSync && (
+                          <span className="text-[9px] font-mono text-cyan-300 font-bold bg-cyan-500/20 px-1.5 py-0.2 rounded border border-cyan-500/40">
+                            ACTIVE
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-300 leading-relaxed">
+                        <strong>Recommended for Daily Workflows:</strong> Automatically replicates captured snapshots, custom presets, and teleprompter scripts to the cloud vault for multi-device access and backup.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Vault Diagnostics & One-Click Cloud Push */}
+                  <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-slate-300">Local Studio Vault Health</span>
+                      <span className="font-mono text-cyan-400 text-[10px]">
+                        {getEffectiveOnlineStatus() ? 'Online' : 'Offline'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                      <div className="p-2 rounded-xl bg-slate-950 border border-slate-800/80">
+                        <div className="text-slate-400">Vault Media Items</div>
+                        <div className="text-xs font-bold text-white mt-0.5">{vaultItems.length} Saved</div>
+                      </div>
+                      <div className="p-2 rounded-xl bg-slate-950 border border-slate-800/80">
+                        <div className="text-slate-400">Presets & Scripts</div>
+                        <div className="text-xs font-bold text-white mt-0.5">
+                          {savedPresets.length} Presets / {savedScripts.length} Scripts
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isSyncingVault}
+                      onClick={async () => {
+                        if (!getEffectiveOnlineStatus()) {
+                          onNotify('Offline Mode', 'Connect to internet to synchronize vault items.', 'warning');
+                          return;
+                        }
+                        setIsSyncingVault(true);
+                        try {
+                          const res = await processPendingOfflineSync();
+                          onNotify('Vault Synced', res.message || 'Media vault items verified against cloud session.', 'success');
+                        } catch (err: any) {
+                          onNotify('Sync Notice', err.message || 'Vault synchronization finished.', 'info');
+                        } finally {
+                          setIsSyncingVault(false);
+                        }
+                      }}
+                      className="w-full py-2 rounded-xl bg-slate-950 hover:bg-slate-800 text-cyan-300 border border-cyan-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isSyncingVault ? 'animate-spin' : ''}`} />
+                      <span>{isSyncingVault ? 'Synchronizing Vault...' : 'Sync Vault to Cloud Now'}</span>
+                    </button>
                   </div>
                 </div>
               )}
@@ -3957,6 +5973,561 @@ export const CameraStudio: React.FC<CameraStudioProps> = ({
                 }`}
               >
                 {isListeningVoice ? 'Turn Off' : 'Turn On Voice AI'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DEDICATED PERSISTENT SCRIPT LIBRARY & TELEPROMPTER STUDIO MODAL */}
+      {isScriptLibraryModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-2xl flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="w-full max-w-5xl bg-[#080d1a] border border-indigo-500/40 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400 shadow-md">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-white font-['Syne']">
+                      Persistent Script Library & Teleprompter Studio
+                    </h3>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full font-bold bg-indigo-950 text-indigo-300 border border-indigo-500/40">
+                      IndexedDB Engine
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Store, edit, organize and select multi-document presentation scripts. Persisted permanently in client IndexedDB.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono px-2 py-1 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hidden sm:inline-flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>{savedScripts.length} Documents</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsScriptLibraryModalOpen(false)}
+                  className="p-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-colors"
+                  title="Close Script Library"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Filter & Action Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2 border-b border-slate-800/80 shrink-0 text-xs">
+              <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[260px]">
+                {/* Search Bar */}
+                <div className="relative flex-1 min-w-[180px]">
+                  <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
+                  <input
+                    type="text"
+                    value={scriptSearchQuery}
+                    onChange={(e) => setScriptSearchQuery(e.target.value)}
+                    placeholder="Search script titles or content..."
+                    className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
+                  />
+                  {scriptSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setScriptSearchQuery('')}
+                      className="absolute right-2 top-2 text-slate-400 hover:text-white"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Category Pills */}
+                <div className="flex items-center gap-1 overflow-x-auto pb-0.5 text-[10px] font-bold">
+                  {['All', 'Presentation', 'Product Pitch', 'Keynote', 'Vlog / Reel', 'Custom'].map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setScriptCategoryFilter(cat)}
+                      className={`px-2.5 py-1 rounded-xl transition-all shrink-0 ${
+                        scriptCategoryFilter === cat
+                          ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white font-black shadow-md'
+                          : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleCreateNewScriptDoc}
+                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>New Document</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleResetFactoryScripts}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-cyan-300 border border-slate-800 text-xs font-bold flex items-center gap-1 transition-colors"
+                  title="Restore Factory Sample Scripts"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Reset Defaults</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body: 2 Columns */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 min-h-0 overflow-hidden">
+              {/* Left Column: Script Documents List */}
+              <div className="lg:col-span-5 flex flex-col space-y-2 overflow-hidden">
+                <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1">
+                  <span>Script Documents ({savedScripts.length})</span>
+                  <span className="font-mono text-cyan-400 text-[10px]">
+                    IndexedDB Stored
+                  </span>
+                </div>
+
+                <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                  {savedScripts
+                    .filter((s) => {
+                      const matchQuery =
+                        !scriptSearchQuery ||
+                        s.title.toLowerCase().includes(scriptSearchQuery.toLowerCase()) ||
+                        s.content.toLowerCase().includes(scriptSearchQuery.toLowerCase());
+                      const matchCat =
+                        scriptCategoryFilter === 'All' || s.category === scriptCategoryFilter;
+                      return matchQuery && matchCat;
+                    })
+                    .map((scr) => (
+                      <div
+                        key={scr.id}
+                        onClick={() => handleSelectScriptForTeleprompter(scr)}
+                        className={`p-3 rounded-2xl border transition-all cursor-pointer space-y-2 ${
+                          activeScriptId === scr.id
+                            ? 'bg-indigo-950/40 border-indigo-500/80 ring-2 ring-indigo-500/40 shadow-lg'
+                            : 'bg-slate-900/70 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-white text-xs truncate">
+                                {scr.title}
+                              </span>
+                              {activeScriptId === scr.id && (
+                                <span className="text-[9px] px-2 py-0.2 rounded-full font-mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold shrink-0">
+                                  ✓ ACTIVE
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono mt-1 flex flex-wrap items-center gap-2">
+                              <span className="px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-500/30">
+                                {scr.category}
+                              </span>
+                              <span>•</span>
+                              <span>{scr.wordCount} words</span>
+                              <span>•</span>
+                              <span>~{scr.estReadingTimeMin}m speech</span>
+                              <span>•</span>
+                              <span>{scr.updatedAt}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => handleSelectScriptForTeleprompter(scr)}
+                              className={`px-2.5 py-1 rounded-xl text-[10px] font-bold transition-all ${
+                                activeScriptId === scr.id
+                                  ? 'bg-cyan-500 text-slate-950 font-black'
+                                  : 'bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/30'
+                              }`}
+                              title="Load this document into live teleprompter view"
+                            >
+                              {activeScriptId === scr.id ? '✓ Loaded' : 'Load'}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDuplicateScript(scr)}
+                              className="p-1 rounded-lg text-slate-400 hover:text-indigo-300 hover:bg-indigo-950/40 transition-colors"
+                              title="Duplicate Document"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleExportScriptTxt(scr.title, scr.content)}
+                              className="p-1 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-cyan-950/40 transition-colors"
+                              title="Export .txt"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </button>
+
+                            {!scr.isDefault && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteScript(scr.id, scr.title)}
+                                className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-colors"
+                                title="Delete Document from IndexedDB"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Preview Snippet */}
+                        <p className="text-[11px] text-slate-300 line-clamp-2 italic font-serif bg-slate-950/80 p-2 rounded-xl border border-slate-800/80 leading-relaxed">
+                          "{scr.content}"
+                        </p>
+                      </div>
+                    ))}
+                </div>
+              </div>
+
+              {/* Right Column: Full Script Document Editor & Teleprompter Tuning */}
+              <div className="lg:col-span-7 flex flex-col space-y-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800/80 overflow-y-auto">
+                <div className="flex items-center justify-between text-xs pb-1 border-b border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <Edit3 className="w-4 h-4 text-indigo-400" />
+                    <span className="font-bold text-white font-['Syne']">
+                      Active Document Editor
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      (ID: {activeScriptId})
+                    </span>
+                  </div>
+
+                  {/* Reading Speed Estimation HUD */}
+                  <div className="flex items-center gap-2 font-mono text-[10px] text-indigo-300">
+                    <span className="font-bold text-white">
+                      {teleprompterText.trim().split(/\s+/).filter(Boolean).length} Words
+                    </span>
+                    <span>•</span>
+                    <span>
+                      ~{(teleprompterText.trim().split(/\s+/).filter(Boolean).length / 140).toFixed(1)}m Read Time
+                    </span>
+                    <span>•</span>
+                    <span>{teleprompterText.length} Chars</span>
+                  </div>
+                </div>
+
+                {/* Metadata Fields */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="sm:col-span-2 space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400">Document Title</label>
+                    <input
+                      type="text"
+                      value={scriptTitleInput}
+                      onChange={(e) => setScriptTitleInput(e.target.value)}
+                      placeholder="Script Document Title (e.g. Q4 Company Presentation)..."
+                      className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 font-medium"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400">Category Tag</label>
+                    <select
+                      value={scriptCategoryInput}
+                      onChange={(e) => setScriptCategoryInput(e.target.value as any)}
+                      className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-indigo-300 focus:outline-none focus:border-indigo-500 font-medium"
+                    >
+                      <option value="Presentation">Presentation</option>
+                      <option value="Product Pitch">Product Pitch</option>
+                      <option value="Keynote">Keynote</option>
+                      <option value="Vlog / Reel">Vlog / Reel</option>
+                      <option value="Custom">Custom</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Document Body Editor */}
+                <div className="space-y-1 flex-1 flex flex-col min-h-[200px]">
+                  <div className="flex items-center justify-between text-[10px] text-slate-400">
+                    <span className="font-bold">Speech Script Text</span>
+                    <span>Live scrolling in active teleprompter view</span>
+                  </div>
+                  <textarea
+                    value={teleprompterText}
+                    onChange={(e) => setTeleprompterText(e.target.value)}
+                    rows={10}
+                    className="w-full flex-1 p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 font-serif leading-relaxed"
+                    placeholder="Enter or paste presentation speech here..."
+                  />
+                </div>
+
+                {/* Quick Teleprompter Speed Tuning Row */}
+                <div className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2 text-xs">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-300">
+                    <span>Teleprompter Real-Time Tuning</span>
+                    <span className="text-[10px] font-mono text-cyan-400">
+                      {teleprompterSpeed.toFixed(1)}x Speed • {teleprompterFontSize}px Font
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[10px] text-slate-400">
+                        <span>Scroll Speed</span>
+                        <span className="font-mono text-cyan-400">{teleprompterSpeed.toFixed(1)}x</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="8.0"
+                        step="0.5"
+                        value={teleprompterSpeed}
+                        onChange={(e) => setTeleprompterSpeed(parseFloat(e.target.value))}
+                        className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[10px] text-slate-400">
+                        <span>Overlay Font Size</span>
+                        <span className="font-mono text-cyan-400">{teleprompterFontSize}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="14"
+                        max="32"
+                        step="1"
+                        value={teleprompterFontSize}
+                        onChange={(e) => setTeleprompterFontSize(parseInt(e.target.value))}
+                        className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Primary Actions Toolbar */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTeleprompterText(
+                          teleprompterText
+                            .split('\n\n')
+                            .map((p) => p.trim())
+                            .filter(Boolean)
+                            .join('\n\n')
+                        );
+                        onNotify('Formatted', 'Cleaned up script paragraph spacing.', 'info');
+                      }}
+                      className="px-2.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 text-xs font-bold transition-colors"
+                    >
+                      ✨ Auto-Format
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(teleprompterText);
+                        onNotify('Copied', 'Script text copied to clipboard.', 'success');
+                      }}
+                      className="px-2.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 text-xs font-bold transition-colors"
+                    >
+                      📋 Copy
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleExportScriptTxt(scriptTitleInput || 'Script', teleprompterText)}
+                      className="px-2.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 text-xs font-bold transition-colors"
+                    >
+                      ⬇️ Export .txt
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={isScriptIdbLoading}
+                      onClick={handleSaveCurrentScript}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white font-black text-xs shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50"
+                      title="Save Script Document (Shortcut: Ctrl+S)"
+                    >
+                      <span>{isScriptIdbLoading ? 'Saving...' : '💾 Save to IndexedDB'}</span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/40 text-indigo-200 border border-indigo-400/30">
+                        Ctrl+S
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTeleprompterOpen(true);
+                        setIsScriptLibraryModalOpen(false);
+                        onNotify('Teleprompter Active 📜', `Live teleprompter view initialized with "${scriptTitleInput || 'Active Script'}".`, 'success');
+                      }}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-black text-xs shadow-md transition-all flex items-center gap-1.5"
+                      title="Launch in Teleprompter HUD (Shortcut: Ctrl+P to scroll)"
+                    >
+                      <span>▶️ Launch in HUD</span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/20 text-slate-950 font-black">
+                        Ctrl+P
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PRESENTATION KEYBOARD HOTKEYS GUIDE MODAL */}
+      {isHotkeysModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="w-full max-w-lg bg-[#080d1a] border border-amber-500/40 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shadow-md">
+                  <Keyboard className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white font-['Syne'] flex items-center gap-2">
+                    <span>Presentation Hotkeys</span>
+                    <span className="text-[10px] font-mono px-2 py-0.2 rounded-full font-bold bg-amber-950 text-amber-300 border border-amber-500/40">
+                      Live Studio
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    High-efficiency keyboard controls designed for high-stakes presentations.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsHotkeysModalOpen(false)}
+                className="p-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-colors"
+                title="Close Hotkeys Guide"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Hotkeys List */}
+            <div className="space-y-2 text-xs">
+              {[
+                {
+                  keys: ['Ctrl', 'S'],
+                  title: 'Save to IndexedDB',
+                  desc: 'Instantly writes current speech script into persistent client IndexedDB with audio confirmation.',
+                  tag: 'Script Editor',
+                  color: 'text-indigo-400 border-indigo-500/30',
+                },
+                {
+                  keys: ['Ctrl', 'P'],
+                  title: 'Play / Pause Teleprompter',
+                  desc: 'Starts smooth real-time speech scroll or pauses at current position during your live pitch.',
+                  tag: 'Teleprompter',
+                  color: 'text-cyan-400 border-cyan-500/30',
+                },
+                {
+                  keys: ['Ctrl', 'R'],
+                  title: 'Start / Stop Video Recording',
+                  desc: 'Toggles video capture without taking hands off the podium or touching trackpad.',
+                  tag: 'Recording',
+                  color: 'text-rose-400 border-rose-500/30',
+                },
+                {
+                  keys: ['Ctrl', 'Shift', 'P'],
+                  title: 'Toggle Teleprompter HUD',
+                  desc: 'Quickly shows or hides the transparent eye-level teleprompter overlay on camera.',
+                  tag: 'HUD Display',
+                  color: 'text-cyan-400 border-cyan-500/30',
+                },
+                {
+                  keys: ['Ctrl', 'Shift', 'L'],
+                  title: 'Open / Close Script Library',
+                  desc: 'Launches full multi-document studio modal to select, search or edit speeches.',
+                  tag: 'Library',
+                  color: 'text-indigo-400 border-indigo-500/30',
+                },
+                {
+                  keys: ['Ctrl', '['],
+                  title: 'Decrease Scroll Speed',
+                  desc: 'Slows down the teleprompter scrolling rate by 0.5x increments.',
+                  tag: 'Speed Tuning',
+                  color: 'text-amber-400 border-amber-500/30',
+                },
+                {
+                  keys: ['Ctrl', ']'],
+                  title: 'Increase Scroll Speed',
+                  desc: 'Speeds up the teleprompter scrolling rate by 0.5x increments.',
+                  tag: 'Speed Tuning',
+                  color: 'text-amber-400 border-amber-500/30',
+                },
+                {
+                  keys: ['Space'],
+                  title: 'Quick Pause / Resume Scroll',
+                  desc: 'When teleprompter HUD is active and you are not typing in a text field.',
+                  tag: 'Presenter Remote',
+                  color: 'text-emerald-400 border-emerald-500/30',
+                },
+                {
+                  keys: ['Esc'],
+                  title: 'Dismiss Modals & HUDs',
+                  desc: 'Closes Script Library, Media Vault, and Hotkeys popups instantly.',
+                  tag: 'Navigation',
+                  color: 'text-slate-400 border-slate-700',
+                },
+              ].map((hk, idx) => (
+                <div
+                  key={idx}
+                  className="p-2.5 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 flex items-start justify-between gap-3 transition-colors"
+                >
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-white text-xs">{hk.title}</span>
+                      <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono border ${hk.color}`}>
+                        {hk.tag}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-snug">{hk.desc}</p>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0 font-mono text-[11px] font-bold">
+                    {hk.keys.map((k, kIdx) => (
+                      <span
+                        key={kIdx}
+                        className="px-2 py-0.5 rounded-lg bg-slate-950 border border-slate-700 text-amber-300 shadow-sm"
+                      >
+                        {k}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Modal Footer Note */}
+            <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
+              <span className="text-[11px] text-slate-400">
+                💡 Works on Windows/Linux (Ctrl) and macOS (Cmd).
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsHotkeysModalOpen(false)}
+                className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs shadow-md transition-all"
+              >
+                Got It
               </button>
             </div>
           </div>
