@@ -459,6 +459,7 @@ export const MANUAL_EN: ManualLanguagePackage = {
         {
           heading: 'Supported Voice Commands & Speech Navigation',
           details: [
+            'Say "Open Voice History" or press Alt+V to open the Voice Command Transcript & Re-execution log.',
             'Say "Open Admin Modal" to immediately launch the Admin Override & RBAC settings dialog.',
             'Say "Go to Film Studio" or "Open Film Studio" to navigate straight to the Cinema Director & Screenplay suite.',
             'Say "Go to Office Suite", "Go to Docs", "Go to Excel", or "Go to Presentation" to open productivity tools.',
@@ -469,16 +470,87 @@ export const MANUAL_EN: ManualLanguagePackage = {
             'Say "Toggle Dark Mode" to flip between high-contrast dark and light modes.',
             'Say "Close Modal" to dismiss any active modal dialog hands-free.',
           ],
+          keyboardShortcuts: [
+            { key: 'Alt + V', desc: 'Toggle Voice Navigation History Sidebar' },
+            { key: 'Ctrl + Shift + V', desc: 'Alternative Voice History hotkey' },
+          ],
           quickActionTab: 'film_studio',
           quickActionLabel: 'Try Voice in Film Studio',
         },
         {
-          heading: 'Web Speech API Engine Capabilities',
+          heading: 'Voice History Sidebar & Re-Execution Engine',
           details: [
-            'Push-to-Talk and Continuous Listening Modes: Toggle continuous listening for uninterrupted hands-free workflow.',
-            'Text-to-Speech Audio Feedback: Spoken confirmations using browser speech synthesis with toggleable mute controls.',
-            'Microphone Permissions: Automatically requests browser microphone access via W3C Web Speech API standard.',
+            'Live Transcript Feed: Displays real-time interim speech feeds and historical transcripts of all spoken voice commands.',
+            '1-Click Re-Execution: Click the "Re-Execute" (▶ Run) button on any past transcript to immediately re-run the command with voice feedback.',
+            'Confidence Score & Status: View execution status (Executed, Unrecognized) and recognition confidence percentages.',
+            'Local Storage Export & Clear: Export transcripts as JSON or clear command history with one click.',
           ],
+        },
+      ],
+    },
+    {
+      id: 'live-collab-canvas',
+      title: '15. Live Collaborative Canvas & 4K Snapshot Exporter',
+      badge: 'Multiplayer Whiteboard',
+      summary: 'Real-time multi-user shared canvas, 4K UHD PNG snapshot exporter, sticky notes, 3D/audio pins, and local vault gallery.',
+      content: [
+        {
+          heading: 'Real-Time Multi-User Collaboration',
+          details: [
+            'Interactive Multiplayer Whiteboard: Collaborate with team members in real-time with synchronized cursor positions and status tags.',
+            'Idea Markers & Sticky Notes: Place color-coded notes, 3D asset pins, and audio stem markers across the canvas.',
+            'Freehand Pen Tool: Draw sketches, arrows, and wireframes directly on the whiteboard with custom colors and line thicknesses.',
+            'Integrated Team Chat: Send live instant messages and production updates to connected collaborators.',
+          ],
+          quickActionTab: 'live_collab_canvas',
+          quickActionLabel: 'Open Collab Canvas Studio',
+        },
+        {
+          heading: 'High-Resolution Snapshot Exporter (.PNG)',
+          details: [
+            'Ultra 4K UHD (3840×2160 px), Full HD (1920×1080 px), and 2K Square (2048×2048 px) crisp rendering.',
+            'Customizable Layers: Toggle team cursors, background grid, transparent PNG mode, and studio watermark branding bar.',
+            'Dual-Storage: Automatically downloads the PNG image to your browser and saves a copy to your browser Local Storage Vault (icallog_canvas_snapshots_v1).',
+            'Clipboard Copy: 1-click "Copy Image" button to paste directly into Discord, Slack, Figma, or presentations.',
+          ],
+        },
+      ],
+    },
+    {
+      id: 'global-search-camera-hotkeys',
+      title: '16. Global Spotlight Search & Camera Studio Hotkeys',
+      badge: 'Productivity & Shortcuts',
+      summary: 'Spotlight command palette (Ctrl+K), real-time camera hotkeys (Ctrl+S, Ctrl+P, Ctrl+R), and collaborative video annotation layer (Alt+A).',
+      content: [
+        {
+          heading: 'Global Spotlight Search (Command Palette)',
+          details: [
+            'Press Ctrl+K (or Cmd+K on macOS) or press the "/" key from anywhere to open the Global Spotlight Navigator.',
+            'Fuzzy search across all 25+ creative studios, sub-tools, templates, saved projects, and quick modal actions.',
+            'Keyboard navigation: Arrow keys to navigate results, Enter to jump to the selected studio, Esc to close.',
+          ],
+          keyboardShortcuts: [
+            { key: 'Ctrl + K / Cmd + K', desc: 'Open Global Spotlight Search' },
+            { key: '/', desc: 'Quick search trigger when outside text fields' },
+          ],
+        },
+        {
+          heading: 'Pro Camera Studio & Hotkeys Remote',
+          details: [
+            'Ctrl + S: Quick save active video recording take to vault.',
+            'Ctrl + P / Spacebar: Quick Play / Pause smart teleprompter scroll.',
+            'Ctrl + R: Start / Stop camera and audio recording instantly.',
+            'Alt + A / Ctrl + Shift + A: Toggle Real-time Collaborative Annotation Layer (draw strokes and pin sticky notes onto the live camera stream during recording).',
+            'Smart Sentiment Teleprompter: Adjusts scrolling pace dynamically based on detected presenter emotion via WebSocket engine.',
+          ],
+          keyboardShortcuts: [
+            { key: 'Ctrl + S', desc: 'Save current recording take' },
+            { key: 'Ctrl + P / Space', desc: 'Play / Pause teleprompter scroll' },
+            { key: 'Ctrl + R', desc: 'Start / Stop recording' },
+            { key: 'Alt + A', desc: 'Toggle Collaborative Video Annotations' },
+          ],
+          quickActionTab: 'pro_camera',
+          quickActionLabel: 'Launch Pro Camera Studio',
         },
       ],
     },
@@ -817,6 +889,68 @@ export const MANUAL_HI: ManualLanguagePackage = {
             'क्यूआर कोड और 3D फ्लिपिंग के साथ आधुनिक बिज़नेस कार्ड।',
             'एटीएस-अनुकूल आधुनिक रेज़्युमे बिल्डर जिसे सीधे PDF में प्रिंट कर सकते हैं।',
           ],
+        },
+      ],
+    },
+    {
+      id: 'voice-navigation',
+      title: '14. वेब स्पीच वॉइस नेविगेशन और कमांड्स',
+      badge: 'वॉइस कंट्रोल',
+      summary: 'माइक द्वारा बोलकर स्टूडियो बदलने, डायलॉग खोलने और ऑटो-सेव करने की सुविधा।',
+      content: [
+        {
+          heading: 'वॉइस कमांड्स और वॉइस हिस्ट्री साइडबार',
+          details: [
+            '"Open Voice History" कहें या Alt+V दबाकर हाल के वॉइस कमांड्स का ट्रांसक्रिप्ट लॉग खोलें।',
+            '1-क्लिक री-एग्जीक्यूट (▶ Run) बटन दबाकर किसी भी पुराने कमांड को दोबारा चलाएं।',
+            '"Go to Film Studio", "Go to Office Suite", "Save Work", "Toggle Dark Mode" जैसे 15+ कमांड्स उपलब्ध हैं।',
+          ],
+          keyboardShortcuts: [
+            { key: 'Alt + V / Ctrl + Shift + V', desc: 'वॉइस नेविगेशन हिस्ट्री साइडबार खोलें' },
+          ],
+          quickActionTab: 'film_studio',
+          quickActionLabel: 'फिल्म स्टूडियो में वॉइस टेस्ट करें',
+        },
+      ],
+    },
+    {
+      id: 'live-collab-canvas',
+      title: '15. लाइव कोलैबोरेशन कैनवास एवं 4K स्नैपशॉट',
+      badge: 'मल्टीप्लेयर व्हाइटबोर्ड',
+      summary: 'रियल-टाइम साझा व्हाइटबोर्ड, 4K UHD PNG स्नैपशॉट एक्सपोर्ट, स्टिकी नोट्स और लोकल वॉल्ट गैलरी।',
+      content: [
+        {
+          heading: 'व्हाइटबोर्ड और 4K स्नैपशॉट एक्सपोर्ट',
+          details: [
+            'मल्टीप्लेयर लाइव कर्सर और आइडिया नोट्स के साथ टीम के साथ मिलकर प्लान करें।',
+            'पेन टूल से लाइव ड्राइंग करें और 4K UHD (3840×2160) या Full HD 1080p में PNG स्नैपशॉट डाउनलोड करें।',
+            'सभी स्नैपशॉट आपके ब्राउज़र लोकल स्टोरेज वॉल्ट (Vault) में अपने आप सुरक्षित रहते हैं।',
+          ],
+          quickActionTab: 'live_collab_canvas',
+          quickActionLabel: 'कोलैब कैनवास खोलें',
+        },
+      ],
+    },
+    {
+      id: 'global-search-camera-hotkeys',
+      title: '16. ग्लोबल स्पॉटलाइट सर्च और कैमरा स्टूडियो शॉर्टकट्स',
+      badge: 'शॉर्टकट्स एवं टूल्स',
+      summary: 'Ctrl+K कमांड पैलेट, कैमरा हॉटकीज़ (Ctrl+S, Ctrl+P, Ctrl+R), और लाइव वीडियो एनोटेशन लेयर (Alt+A)।',
+      content: [
+        {
+          heading: 'ग्लोबल सर्च और कैमरा शॉर्टकट्स',
+          details: [
+            'Ctrl+K या / दबाकर तुरंत किसी भी स्टूडियो, टूल या प्रोजेक्ट में नेविगेट करें।',
+            'कैमरा स्टूडियो में Ctrl+S (सेव टेक), Ctrl+P / Space (टेलीप्रॉम्प्टर पॉज़/रिज्यूम), Ctrl+R (रिकॉर्डिंग)।',
+            'Alt+A दबाकर लाइव कैमरा फीड पर कोलैबोरेटिव एनोटेशन और स्टिकी नोट्स ड्रॉ करें।',
+          ],
+          keyboardShortcuts: [
+            { key: 'Ctrl + K / Cmd + K', desc: 'ग्लोबल स्पॉटलाइट सर्च खोलें' },
+            { key: 'Alt + A', desc: 'लाइव कैमरा एनोटेशन लेयर ऑन/ऑफ करें' },
+            { key: 'Ctrl + S', desc: 'रिकॉर्डिंग टेक सेव करें' },
+          ],
+          quickActionTab: 'pro_camera',
+          quickActionLabel: 'प्रो कैमरा स्टूडियो खोलें',
         },
       ],
     },

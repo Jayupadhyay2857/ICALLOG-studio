@@ -27,7 +27,33 @@ export type VoiceActionType =
   | { type: 'CLOSE_ALL_MODALS'; label: string }
   | { type: 'TOGGLE_DARK_MODE'; label: string }
   | { type: 'SAVE_WORK'; label: string }
-  | { type: 'EXTEND_SESSION'; label: string };
+  | { type: 'EXTEND_SESSION'; label: string }
+  | { type: 'EXECUTE_MACRO'; macro: VoiceMacro; label: string };
+
+export interface VoiceMacroStep {
+  id: string;
+  type: 'navigate_tab' | 'open_modal' | 'toggle_dark_mode' | 'save_work' | 'extend_session' | 'speech_feedback' | 'custom_event';
+  tab?: ActiveTab;
+  subTab?: string;
+  modal?: 'admin' | 'profile' | 'history' | 'cookies' | 'camera' | 'omni_enhance' | 'global_search' | 'voice_history';
+  speechText?: string;
+  eventName?: string;
+  eventDetail?: any;
+  delayMs?: number;
+}
+
+export interface VoiceMacro {
+  id: string;
+  name: string;
+  triggerPhrase: string;
+  description: string;
+  steps: VoiceMacroStep[];
+  icon?: string;
+  badgeColor?: string;
+  createdAt: number;
+  isEnabled: boolean;
+  timesExecuted: number;
+}
 
 export interface VoiceHistoryEntry {
   id: string;
@@ -153,6 +179,344 @@ export function subscribeVoiceHistory(fn: (history: VoiceHistoryEntry[]) => void
   return () => {
     historyListeners.delete(fn);
   };
+}
+
+// ----------------------------------------------------
+// VOICE MACRO MANAGER ENGINE
+// Multi-step sequential voice workflows & alias triggers
+// ----------------------------------------------------
+const VOICE_MACROS_KEY = 'icallog_voice_macros_v1';
+let macrosCache: VoiceMacro[] | null = null;
+const macroListeners = new Set<(macros: VoiceMacro[]) => void>();
+
+export const DEFAULT_VOICE_MACROS: VoiceMacro[] = [
+  {
+    id: 'macro_cinema_director',
+    name: 'Cinema Director Mode',
+    triggerPhrase: 'cinema director mode',
+    description: 'Switches to Film Studio, activates screenplay tools, and executes auto-save.',
+    icon: 'Clapperboard',
+    badgeColor: 'from-amber-500 to-rose-600',
+    createdAt: Date.now() - 1000 * 60 * 60 * 24 * 2,
+    isEnabled: true,
+    timesExecuted: 7,
+    steps: [
+      {
+        id: 's_1',
+        type: 'speech_feedback',
+        speechText: 'Activating Cinema Director Mode',
+        delayMs: 100,
+      },
+      {
+        id: 's_2',
+        type: 'navigate_tab',
+        tab: 'film_studio',
+        delayMs: 250,
+      },
+      {
+        id: 's_3',
+        type: 'save_work',
+        delayMs: 200,
+      },
+    ],
+  },
+  {
+    id: 'macro_podcast_soundstage',
+    name: 'Deep Focus Podcast Setup',
+    triggerPhrase: 'start podcast session',
+    description: 'Launches Multi-Host Podcast Studio with audio cues and live microphone monitoring.',
+    icon: 'Radio',
+    badgeColor: 'from-purple-500 to-indigo-600',
+    createdAt: Date.now() - 1000 * 60 * 60 * 24,
+    isEnabled: true,
+    timesExecuted: 4,
+    steps: [
+      {
+        id: 's_1',
+        type: 'speech_feedback',
+        speechText: 'Initializing Podcast Studio soundstage',
+        delayMs: 100,
+      },
+      {
+        id: 's_2',
+        type: 'navigate_tab',
+        tab: 'podcast_studio',
+        delayMs: 200,
+      },
+    ],
+  },
+  {
+    id: 'macro_brand_identity',
+    name: 'Brand Identity Suite',
+    triggerPhrase: 'design brand identity',
+    description: 'Navigates to Design Studio Favicons and loads modern branding templates.',
+    icon: 'Palette',
+    badgeColor: 'from-cyan-500 to-teal-500',
+    createdAt: Date.now() - 1000 * 60 * 60 * 12,
+    isEnabled: true,
+    timesExecuted: 3,
+    steps: [
+      {
+        id: 's_1',
+        type: 'speech_feedback',
+        speechText: 'Launching Brand Identity Suite',
+        delayMs: 100,
+      },
+      {
+        id: 's_2',
+        type: 'navigate_tab',
+        tab: 'design_studio',
+        subTab: 'favicon',
+        delayMs: 200,
+      },
+    ],
+  },
+  {
+    id: 'macro_metaverse_3d',
+    name: '3D Metaverse Armature Rig',
+    triggerPhrase: 'metaverse 3d workflow',
+    description: 'Launches Three.js 3D WebGL Sandbox with full 17-bone character armature.',
+    icon: 'Box',
+    badgeColor: 'from-blue-500 to-cyan-500',
+    createdAt: Date.now() - 1000 * 60 * 60 * 6,
+    isEnabled: true,
+    timesExecuted: 5,
+    steps: [
+      {
+        id: 's_1',
+        type: 'speech_feedback',
+        speechText: 'Launching 3D WebGL Armature Rig',
+        delayMs: 100,
+      },
+      {
+        id: 's_2',
+        type: 'navigate_tab',
+        tab: '3d_engine',
+        delayMs: 200,
+      },
+    ],
+  },
+  {
+    id: 'macro_secure_backup',
+    name: 'Instant Studio Auto-Save & Sync',
+    triggerPhrase: 'secure auto save',
+    description: 'Performs immediate IndexedDB vault auto-save and extends session security token.',
+    icon: 'Save',
+    badgeColor: 'from-emerald-500 to-teal-600',
+    createdAt: Date.now() - 1000 * 60 * 60 * 3,
+    isEnabled: true,
+    timesExecuted: 12,
+    steps: [
+      {
+        id: 's_1',
+        type: 'save_work',
+        delayMs: 150,
+      },
+      {
+        id: 's_2',
+        type: 'extend_session',
+        delayMs: 150,
+      },
+      {
+        id: 's_3',
+        type: 'speech_feedback',
+        speechText: 'All workspace projects securely backed up',
+        delayMs: 100,
+      },
+    ],
+  },
+];
+
+export function getVoiceMacros(): VoiceMacro[] {
+  if (macrosCache) return [...macrosCache];
+  if (typeof window === 'undefined') return DEFAULT_VOICE_MACROS;
+  try {
+    const stored = localStorage.getItem(VOICE_MACROS_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        macrosCache = parsed;
+        return [...parsed];
+      }
+    }
+  } catch {
+    // fallback
+  }
+
+  macrosCache = DEFAULT_VOICE_MACROS;
+  try {
+    localStorage.setItem(VOICE_MACROS_KEY, JSON.stringify(DEFAULT_VOICE_MACROS));
+  } catch {
+    // ignore
+  }
+  return [...DEFAULT_VOICE_MACROS];
+}
+
+export function saveVoiceMacro(macroData: Partial<VoiceMacro> & { name: string; triggerPhrase: string; steps: VoiceMacroStep[] }): VoiceMacro {
+  const current = getVoiceMacros();
+  const existingIdx = current.findIndex((m) => m.id === macroData.id);
+
+  const cleanTrigger = macroData.triggerPhrase
+    .toLowerCase()
+    .replace(/[.,?!;:]/g, '')
+    .trim();
+
+  let updatedMacro: VoiceMacro;
+
+  if (existingIdx >= 0) {
+    updatedMacro = {
+      ...current[existingIdx],
+      ...macroData,
+      triggerPhrase: cleanTrigger,
+    };
+    current[existingIdx] = updatedMacro;
+  } else {
+    updatedMacro = {
+      id: macroData.id || `macro_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      name: macroData.name.trim(),
+      triggerPhrase: cleanTrigger,
+      description: macroData.description || `Custom multi-step macro for "${cleanTrigger}"`,
+      steps: macroData.steps || [],
+      icon: macroData.icon || 'Sparkles',
+      badgeColor: macroData.badgeColor || 'from-indigo-500 to-cyan-500',
+      createdAt: Date.now(),
+      isEnabled: macroData.isEnabled !== undefined ? macroData.isEnabled : true,
+      timesExecuted: 0,
+    };
+    current.unshift(updatedMacro);
+  }
+
+  macrosCache = current;
+  try {
+    localStorage.setItem(VOICE_MACROS_KEY, JSON.stringify(current));
+  } catch {
+    // ignore
+  }
+
+  macroListeners.forEach((fn) => fn([...current]));
+  return updatedMacro;
+}
+
+export function deleteVoiceMacro(id: string): void {
+  const current = getVoiceMacros();
+  const updated = current.filter((m) => m.id !== id);
+  macrosCache = updated;
+  try {
+    localStorage.setItem(VOICE_MACROS_KEY, JSON.stringify(updated));
+  } catch {
+    // ignore
+  }
+  macroListeners.forEach((fn) => fn([...updated]));
+}
+
+export function toggleVoiceMacro(id: string, isEnabled: boolean): void {
+  const current = getVoiceMacros();
+  const updated = current.map((m) => (m.id === id ? { ...m, isEnabled } : m));
+  macrosCache = updated;
+  try {
+    localStorage.setItem(VOICE_MACROS_KEY, JSON.stringify(updated));
+  } catch {
+    // ignore
+  }
+  macroListeners.forEach((fn) => fn([...updated]));
+}
+
+export function subscribeVoiceMacros(fn: (macros: VoiceMacro[]) => void): () => void {
+  macroListeners.add(fn);
+  fn(getVoiceMacros());
+  return () => {
+    macroListeners.delete(fn);
+  };
+}
+
+export async function executeVoiceMacro(macroOrId: VoiceMacro | string): Promise<boolean> {
+  const macro = typeof macroOrId === 'string' ? getVoiceMacros().find((m) => m.id === macroOrId) : macroOrId;
+  if (!macro) {
+    console.warn('[VoiceMacro] Macro not found:', macroOrId);
+    return false;
+  }
+
+  if (!macro.isEnabled) {
+    speakFeedback(`Macro "${macro.name}" is currently disabled.`);
+    return false;
+  }
+
+  if (!currentHandlers) {
+    console.warn('[VoiceMacro] No handlers registered');
+    return false;
+  }
+
+  // Increment usage count
+  const all = getVoiceMacros();
+  const idx = all.findIndex((m) => m.id === macro.id);
+  if (idx >= 0) {
+    all[idx].timesExecuted = (all[idx].timesExecuted || 0) + 1;
+    macrosCache = all;
+    try {
+      localStorage.setItem(VOICE_MACROS_KEY, JSON.stringify(all));
+    } catch {
+      // ignore
+    }
+    macroListeners.forEach((fn) => fn([...all]));
+  }
+
+  currentHandlers.onNotify(
+    'Running Voice Macro',
+    `Executing "${macro.name}" (${macro.steps.length} steps)...`,
+    'info'
+  );
+
+  // Execute steps sequentially
+  for (let i = 0; i < macro.steps.length; i++) {
+    const step = macro.steps[i];
+    if (step.delayMs && step.delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, step.delayMs));
+    }
+
+    switch (step.type) {
+      case 'speech_feedback':
+        if (step.speechText) speakFeedback(step.speechText);
+        break;
+
+      case 'navigate_tab':
+        if (step.tab) currentHandlers.onNavigateTab(step.tab, step.subTab);
+        break;
+
+      case 'open_modal':
+        if (step.modal === 'admin') currentHandlers.onOpenAdminModal();
+        else if (step.modal === 'profile') currentHandlers.onOpenProfileModal();
+        else if (step.modal === 'history') currentHandlers.onOpenHistoryModal();
+        else if (step.modal === 'cookies') currentHandlers.onOpenCookieModal();
+        else if (step.modal === 'voice_history' && currentHandlers.onOpenVoiceHistory) currentHandlers.onOpenVoiceHistory();
+        break;
+
+      case 'toggle_dark_mode':
+        currentHandlers.onToggleDarkMode();
+        break;
+
+      case 'save_work':
+        currentHandlers.onSaveWork();
+        break;
+
+      case 'extend_session':
+        currentHandlers.onExtendSession();
+        break;
+
+      case 'custom_event':
+        if (step.eventName) {
+          window.dispatchEvent(new CustomEvent(step.eventName, { detail: step.eventDetail }));
+        }
+        break;
+    }
+  }
+
+  currentHandlers.onNotify(
+    'Macro Completed',
+    `Successfully finished "${macro.name}" workflow.`,
+    'success'
+  );
+
+  return true;
 }
 
 export function reExecuteVoiceCommand(entry: VoiceHistoryEntry | string): boolean {
@@ -492,6 +856,21 @@ export function parseVoiceCommand(rawText: string): VoiceActionType | null {
     .trim();
 
   if (!text) return null;
+
+  // 0. CUSTOM VOICE MACROS & MULTI-STEP ALIASES
+  const allMacros = getVoiceMacros();
+  for (const macro of allMacros) {
+    if (macro.isEnabled) {
+      const trigger = macro.triggerPhrase.toLowerCase().trim();
+      if (text === trigger || text.includes(trigger) || (trigger.length >= 6 && text.includes(trigger.slice(0, Math.floor(trigger.length * 0.8))))) {
+        return {
+          type: 'EXECUTE_MACRO',
+          macro,
+          label: `Macro: ${macro.name}`,
+        };
+      }
+    }
+  }
 
   // 1. ADMIN MODAL COMMANDS
   if (
@@ -903,6 +1282,10 @@ export function executeVoiceAction(action: VoiceActionType): boolean {
     case 'SAVE_WORK':
       currentHandlers.onSaveWork();
       currentHandlers.onNotify('Voice Command', 'Immediate work auto-save executed.', 'success');
+      return true;
+
+    case 'EXECUTE_MACRO':
+      executeVoiceMacro(action.macro);
       return true;
 
     case 'EXTEND_SESSION':
