@@ -722,16 +722,284 @@ Please return a detailed JSON object with this exact structure:
   };
 }
 
+const GLOBAL_UNIVERSAL_POP_CULTURE_KNOWLEDGE: Record<string, { expansion: string; defaultStyle: string }> = {
+  // Cartoons & Animated Icons
+  'motu patlu': {
+    expansion: 'Motu and Patlu iconic 3D animated comedy duo from Furfuri Nagar, Motu is a cheerful stout man with red tunic and mustache eating crispy hot samosas, Patlu is a slim smart bald man with round spectacles and yellow kurta, Furfuri Nagar background, vibrant 3D cartoon animation render',
+    defaultStyle: '3D CGI Cartoon Animation (Pixar & DreamWorks style, vibrant colors)'
+  },
+  'motu': {
+    expansion: 'Motu from Motu Patlu cartoon, cheerful plump man with mustache wearing red tunic enjoying crispy samosas, 3D animated comedy cartoon style',
+    defaultStyle: '3D CGI Cartoon Animation'
+  },
+  'patlu': {
+    expansion: 'Patlu from Motu Patlu cartoon, thin intelligent bald man with round spectacles in yellow kurta, 3D animated comedy cartoon style',
+    defaultStyle: '3D CGI Cartoon Animation'
+  },
+  'chhota bheem': {
+    expansion: 'Chhota Bheem from Dholakpur, brave muscular young Indian animated hero wearing orange dhoti eating golden laddoos, energetic heroic pose, colorful Indian cartoon animation style',
+    defaultStyle: 'Indian 3D Cartoon Animation'
+  },
+  'chota bheem': {
+    expansion: 'Chhota Bheem from Dholakpur, brave young hero in orange dhoti with laddoos, vibrant cartoon animation style',
+    defaultStyle: 'Indian 3D Cartoon Animation'
+  },
+  'doraemon': {
+    expansion: 'Doraemon robotic blue earless cat with red nose, bell collar and 4D magic pocket standing with Nobita Nobi in Tokyo neighborhood, cheerful bright anime cartoon style',
+    defaultStyle: 'Classic 2D/3D Anime Cartoon'
+  },
+  'shinchan': {
+    expansion: 'Shinchan Nohara, mischievous 5-year-old animated boy with thick eyebrows in iconic red t-shirt and yellow shorts with white puppy Shiro, funny cartoon anime style',
+    defaultStyle: 'Anime Cartoon Animation'
+  },
+  'tom and jerry': {
+    expansion: 'Tom the blue-grey cat and Jerry the clever little brown mouse in a dynamic humorous slapstick cartoon chase, vibrant classic animation style',
+    defaultStyle: 'Classic 2D Slapstick Cartoon'
+  },
+  'mickey mouse': {
+    expansion: 'Mickey Mouse iconic Disney cartoon character with round black ears, white gloves, red shorts with white buttons, and yellow shoes, classic cheerful animation style',
+    defaultStyle: 'Classic Disney 2D/3D Cartoon'
+  },
+  'oggy': {
+    expansion: 'Oggy the blue cat with red nose and white belly in funny cartoon battle against three cheeky cockroaches Joey Dee Dee and Marky, vibrant colorful slapstick cartoon style',
+    defaultStyle: 'Slapstick Pop Cartoon'
+  },
+  'ben 10': {
+    expansion: 'Ben 10 Tennyson hero activating the glowing green Omnitrix wristwatch with alien silhouettes in background, action-packed cartoon anime style',
+    defaultStyle: 'Action Animated Series'
+  },
+  'spongebob': {
+    expansion: 'SpongeBob SquarePants joyful yellow sponge in white shirt, red tie and brown square trousers standing in underwater Bikini Bottom with jellyfish, vibrant cartoon style',
+    defaultStyle: 'Vibrant Undersea Cartoon'
+  },
+  'ninja hattori': {
+    expansion: 'Ninja Hattori Kanzo in blue ninja kimono with yellow sash, jumping across Tokyo rooftops with brother Shinzo and dog Shishimaru, classic anime cartoon style',
+    defaultStyle: 'Classic Anime Toon'
+  },
+  'little singham': {
+    expansion: 'Little Singham the brave energetic kid super-cop in police uniform with sunglasses, roaring lion aura, Indian cartoon action style',
+    defaultStyle: 'Indian 3D Cartoon Animation'
+  },
+  'shiva cartoon': {
+    expansion: 'Shiva the brave young superhero boy riding his high-tech futuristic gadget super-cycle, action-packed 3D cartoon animation style',
+    defaultStyle: '3D Action Cartoon Animation'
+  },
+  'roll no 21': {
+    expansion: 'Kris the modern blue-skinned incarnation of Krishna in school uniform using magical peacock feather flute against demon principal Kanishk, Roll No 21 animation style',
+    defaultStyle: 'Indian Pop Cartoon Animation'
+  },
+  'minions': {
+    expansion: 'Minions cute yellow pill-shaped creatures with one or two round goggles in blue denim overalls, laughing and holding bananas, 3D CGI animation style',
+    defaultStyle: 'Illumination 3D CGI Animation'
+  },
+  'kung fu panda': {
+    expansion: 'Po the Giant Panda dragon warrior in martial arts kung fu pose with glowing chi energy, DreamWorks 3D animation style',
+    defaultStyle: 'DreamWorks 3D CGI Masterpiece'
+  },
+
+  // Anime & Manga Legends
+  'naruto': {
+    expansion: 'Naruto Uzumaki ninja in orange jumpsuit with spiky blonde hair and blue headband forming glowing blue Rasengan chakra, dynamic anime action scene',
+    defaultStyle: 'High-Octane Shonen Anime (Ufotable/MAPPA Quality)'
+  },
+  'goku': {
+    expansion: 'Goku Super Saiyan with golden spiky hair, intense aura and glowing blue Kamehameha energy blast, Dragon Ball Z anime masterpiece',
+    defaultStyle: 'Epic Shonen Anime Masterpiece'
+  },
+  'luffy': {
+    expansion: 'Monkey D. Luffy Straw Hat captain with red vest and straw hat using Gear 5 Sun God Nika laughing joyfully, One Piece vibrant anime style',
+    defaultStyle: 'Vibrant Shonen Anime'
+  },
+  'gojo': {
+    expansion: 'Gojo Satoru Jujutsu sorcerer with white spiky hair, blindfold lifted revealing glowing infinite blue eyes activating Domain Expansion Unlimited Void, Jujutsu Kaisen MAPPA anime style',
+    defaultStyle: 'Prestige MAPPA Anime Aesthetic'
+  },
+  'sung jin-woo': {
+    expansion: 'Sung Jin-Woo the Shadow Monarch with glowing purple eyes surrounded by shadowy soldier army, Solo Leveling dark manhwa action style',
+    defaultStyle: 'Dark Fantasy Webtoon Manhwa'
+  },
+  'eren': {
+    expansion: 'Eren Yeager Attack Titan with glowing green eyes and thunderous lightning strike, Attack on Titan cinematic anime style',
+    defaultStyle: 'Cinematic Dark Anime'
+  },
+  'tanjiro': {
+    expansion: 'Tanjiro Kamado with checkered haori wielding black Nichirin blade with fiery Hinokami Kagura solar dragon breathing, Demon Slayer Ufotable style',
+    defaultStyle: 'Ufotable Visual Spectacle Anime'
+  },
+
+  // OTT Web Series
+  'sacred games': {
+    expansion: 'Ganesh Gaitonde ruthless underworld crime lord in white kurta standing in smoky 1980s Mumbai underworld with Sartaj Singh cop in turban, Sacred Games gritty noir style',
+    defaultStyle: 'Gritty Prestige OTT Crime Noir'
+  },
+  'mirzapur': {
+    expansion: 'Kaleen Bhaiya Akhandanand Tripathi seated on royal wooden chair with Guddu Pandit wielding shotgun in dusty Mirzapur rustic crime world, dramatic high-contrast OTT cinema style',
+    defaultStyle: 'Rustic Action Crime OTT Series'
+  },
+  'stranger things': {
+    expansion: 'Eleven with hand outstretched using telekinetic power in neon 1980s Hawkins with terrifying towering Demogorgon and red storm in Upside Down world, Stranger Things Netflix style',
+    defaultStyle: '80s Sci-Fi Retro Supernatural OTT'
+  },
+  'breaking bad': {
+    expansion: 'Walter White Heisenberg in black pork pie hat and dark sunglasses standing in New Mexico desert beside yellow hazmat smoke with Jesse Pinkman, Breaking Bad cinematic AMC style',
+    defaultStyle: 'Prestige Cinematic Drama'
+  },
+  'game of thrones': {
+    expansion: 'Jon Snow in dark fur cloak holding Valyrian steel Longclaw sword with Daenerys Targaryen riding fire-breathing dragon over snow-covered Iron Throne, Game of Thrones HBO style',
+    defaultStyle: 'Epic High Fantasy Cinema'
+  },
+  'money heist': {
+    expansion: 'The Professor in tailored suit with glasses orchestrating heist alongside crew wearing red jumpsuits and Salvador Dali masks holding banknotes in bank vault, Money Heist Netflix style',
+    defaultStyle: 'High-Stakes Thriller OTT Cinema'
+  },
+  'squid game': {
+    expansion: 'Contestant 456 in green tracksuit standing on colorful playground with giant creepy robot doll and pink hooded guards with circle triangle square masks, Squid Game style',
+    defaultStyle: 'Dystopian Korean Drama Thriller'
+  },
+  'the boys': {
+    expansion: 'Homelander in American flag cape with glowing red laser eyes smiling menacingly in Vought tower with Billy Butcher in black trench coat holding crowbar, The Boys gritty superhero style',
+    defaultStyle: 'Gritty Satirical Superhero OTT'
+  },
+  'peaky blinders': {
+    expansion: 'Thomas Shelby in tailored tweed three-piece suit with flat cap smoking cigarette in moody misty 1920s Birmingham alleyway, Peaky Blinders BBC cinematic style',
+    defaultStyle: 'Moody British Period Crime Noir'
+  },
+  'panchayat': {
+    expansion: 'Abhishek Tripathi Sachiv Ji sitting on plastic chair outside Phulera Panchayat office with Pradhan Ji Vikas and Prahlad eating samosas in rural village, Panchayat heartwarming style',
+    defaultStyle: 'Warm Rural Indian Cinema'
+  },
+
+  // Blockbuster Movies
+  'iron man': {
+    expansion: 'Iron Man Tony Stark in glowing red and gold nanotech armor with blue arc reactor repulsor blast, high-tech holographic HUD, Marvel MCU blockbuster style',
+    defaultStyle: 'Hollywood 8K Blockbuster Cinema'
+  },
+  'batman': {
+    expansion: 'The Dark Knight Batman in stealth black armored batsuit standing atop Gotham City gargoyle skyscraper in heavy rain with Bat-Signal glowing in cloudy sky, DC cinema style',
+    defaultStyle: 'Dark Neo-Noir IMAX Cinema'
+  },
+  'rrr': {
+    expansion: 'Ram Charan as Alluri Sitarama Raju with fiery bow and arrow beside Jr NTR as Komaram Bheem leaping with roaring tiger, epic Indian blockbuster RRR cinema style',
+    defaultStyle: 'Epic Mass Action Indian Cinema'
+  },
+  'kgf': {
+    expansion: 'Rocky Bhai Yash in tailored suit smoking cigar holding heavy Browning machine gun with sparks and fire in gold mines, KGF cinematic high-contrast gold-tinted action style',
+    defaultStyle: 'High-Contrast Stylized Action Cinema'
+  },
+  'bahubali': {
+    expansion: 'Amarendra Baahubali lifting heavy stone Shivling with waterfalls of Mahishmati kingdom in background, epic Indian fantasy cinema style',
+    defaultStyle: 'Grand Indian Mythological Epic'
+  },
+  'pushpa': {
+    expansion: 'Pushpa Raj Allu Arjun with folded beard and rugged red sandalwood forest attire, iconic Jhukega Nahi pose with axe, intense mass cinema style',
+    defaultStyle: 'Rugged Mass Action Cinema'
+  },
+  'harry potter': {
+    expansion: 'Harry Potter with round glasses and lightning bolt scar holding glowing wand casting Expecto Patronum silver stag patronus in front of Hogwarts Castle at night, Harry Potter magical cinema style',
+    defaultStyle: 'Enchanted Magical Fantasy Cinema'
+  },
+  'star wars': {
+    expansion: 'Darth Vader dark Sith Lord in black helmet with glowing crimson red lightsaber in foggy Imperial Star Destroyer corridor, Star Wars iconic cinematic style',
+    defaultStyle: 'Epic Space Opera Sci-Fi'
+  },
+  'avatar': {
+    expansion: 'Na\'vi warrior Neytiri with blue bioluminescent striped skin and glowing yellow eyes riding Banshee ikran over floating Hallelujah Mountains on Pandora, Avatar 8K IMAX style',
+    defaultStyle: 'Photorealistic 8K Anamorphic IMAX'
+  },
+
+  // Video Games
+  'gta': {
+    expansion: 'Grand Theft Auto GTA 6 neon-lit Vice City ocean drive with luxury sports cars, palm trees, golden sunset, and dynamic action protagonists, Rockstar Games AAA graphics',
+    defaultStyle: 'Unreal Engine 5 Octane 3D Gaming'
+  },
+  'witcher': {
+    expansion: 'Geralt of Rivia white-haired monster slayer with twin silver and steel swords on his back, glowing yellow Cat eyes, casting Quen sign in dark Velen forest, Witcher 3 AAA RPG style',
+    defaultStyle: 'Dark Fantasy Next-Gen Game Render'
+  },
+  'cyberpunk 2077': {
+    expansion: 'V cyberpunk mercenary with cybernetic glowing eye implants and mantis blades standing in rain-slicked neon Night City with flying aerodynes, Cyberpunk 2077 ray-traced style',
+    defaultStyle: 'Cyberpunk Neon Synthwave'
+  },
+  'god of war': {
+    expansion: 'Kratos the Spartan Ghost of Sparta with glowing red war tattoo holding frozen Leviathan Axe with son Atreus in snowy Norse realm of Midgard, God of War AAA cinematic style',
+    defaultStyle: 'AAA Cinematic Next-Gen Render'
+  },
+  'red dead': {
+    expansion: 'Arthur Morgan rugged outlaw cowboy on horseback aiming revolver during blazing crimson sunset over western frontier valley, Red Dead Redemption 2 photorealistic style',
+    defaultStyle: 'Photorealistic Western Cinema'
+  },
+  'elden ring': {
+    expansion: 'Tarnished warrior in knight armor looking up at colossal glowing golden Erdtree spanning the sky of Lands Between, Elden Ring dark fantasy masterpiece',
+    defaultStyle: 'Epic Dark Fantasy Artwork'
+  },
+  'bgmi': {
+    expansion: 'PUBG BGMI battle royale squad in level 3 helmets and ghillie suits rushing red flare gun smoke airdrop crate in Erangel with buggy, AAA shooter graphics',
+    defaultStyle: 'AAA Action Tactical Shooter'
+  },
+  'minecraft': {
+    expansion: 'Steve with diamond armor and glowing enchanted sword standing near cozy wooden cabin with cubic landscape and glowing redstone lamps, ultra-realistic Minecraft shader style',
+    defaultStyle: 'Next-Gen 3D Voxel Shader Art'
+  },
+  'free fire': {
+    expansion: 'DJ Alok character with glowing music soundwave aura and dual pistols in Bermuda battle arena, Free Fire action style',
+    defaultStyle: 'Stylized Action Mobile AAA'
+  },
+  'valorant': {
+    expansion: 'Jett Korean duelist agent floating mid-air throwing glowing wind kunai knives in neon futuristic cyber city site, Valorant stylized tactical shooter style',
+    defaultStyle: 'Stylized Cel-Shaded Hero Shooter'
+  },
+};
+
 export async function generateAiImage(params: {
   prompt: string;
   style?: string;
   resolution?: string;
   aspectRatio?: string;
 }): Promise<{ imageUrl: string; prompt: string; source: string }> {
-  const { prompt, style = 'Cyberpunk', resolution = '8K', aspectRatio = '16:9' } = params;
+  let { prompt, style = 'Photorealistic 8K Anamorphic IMAX', resolution = '8K', aspectRatio = '16:9' } = params;
   const client = getGeminiClient();
 
-  const styledPrompt = `${prompt}, ${style} style, ultra-detailed 8K masterpiece, masterpiece lighting, sharp focus, pristine rendering`;
+  // 0. Intelligent Universal Pop-Culture, Cartoon, OTT, Movies & Games Knowledge Expander
+  const cleanPromptLower = prompt.toLowerCase();
+  let matchedPopCulture = false;
+  let expandedCharacterPrompt = prompt;
+  let effectiveStyle = style;
+
+  for (const [key, config] of Object.entries(GLOBAL_UNIVERSAL_POP_CULTURE_KNOWLEDGE)) {
+    const regex = new RegExp(`\\b${key}\\b`, 'i');
+    if (regex.test(cleanPromptLower)) {
+      matchedPopCulture = true;
+      expandedCharacterPrompt = `${config.expansion}, ${prompt}`;
+      if (!style || style === 'Cyberpunk' || style === 'Photorealistic 8K Anamorphic IMAX') {
+        effectiveStyle = config.defaultStyle;
+      }
+      break;
+    }
+  }
+
+  // Detect general cartoons / anime if not matched in specific dictionary
+  if (!matchedPopCulture) {
+    if (cleanPromptLower.includes('cartoon') || cleanPromptLower.includes('toon') || cleanPromptLower.includes('disney') || cleanPromptLower.includes('pixar')) {
+      effectiveStyle = '3D CGI Cartoon Animation (Pixar & DreamWorks style, vibrant colors)';
+    } else if (cleanPromptLower.includes('anime') || cleanPromptLower.includes('manga')) {
+      effectiveStyle = 'High-Octane Japanese Anime Masterpiece';
+    } else if (cleanPromptLower.includes('game') || cleanPromptLower.includes('gaming')) {
+      effectiveStyle = 'Unreal Engine 5 Octane 3D Gaming';
+    } else if (cleanPromptLower.includes('18+') || cleanPromptLower.includes('mature') || cleanPromptLower.includes('erotic') || cleanPromptLower.includes('noir')) {
+      effectiveStyle = 'Dark Erotic Thriller & Neo-Noir (Uncensored)';
+    }
+  }
+
+  // Resolution-calibrated razor-sharp anti-blur prompt calibration
+  const is8k = resolution === '8K';
+  const is4k = resolution === '4K' || resolution === '2K';
+  const fidelityTag = is8k
+    ? 'native 8K UHD IMAX masterpiece, razor-sharp focus, crystal clear micro-textures, zero blur, cinematic volumetric lighting, uncompressed raw fidelity'
+    : is4k
+    ? '4K UHD ultra-sharp masterpiece, crystal clarity, precise focus, zero blur, dynamic range'
+    : 'high-resolution crisp artwork, sharp focus, vibrant contrast';
+
+  const styledPrompt = `${expandedCharacterPrompt}, ${effectiveStyle} style, ${fidelityTag}`;
 
   // 1. Try Gemini Image model if available
   if (client) {
@@ -760,24 +1028,28 @@ export async function generateAiImage(params: {
   }
 
   // 2. High-Fidelity Prompt-Accurate Neural Flux Diffusion Engine
-  let width = 1024;
-  let height = 1024;
+  // Scale resolution dynamically: use crisp 1920x1080 / 1440p / high-res to avoid blur
+  let width = 1280;
+  let height = 1280;
   if (aspectRatio === '16:9') {
-    width = 1280;
-    height = 720;
+    width = is8k || is4k ? 1920 : 1280;
+    height = is8k || is4k ? 1080 : 720;
   } else if (aspectRatio === '9:16') {
-    width = 720;
-    height = 1280;
+    width = is8k || is4k ? 1080 : 720;
+    height = is8k || is4k ? 1920 : 1280;
   } else if (aspectRatio === '4:3') {
-    width = 1024;
-    height = 768;
+    width = is8k || is4k ? 1440 : 1024;
+    height = is8k || is4k ? 1080 : 768;
   } else if (aspectRatio === '21:9') {
-    width = 1344;
-    height = 576;
+    width = is8k || is4k ? 1920 : 1344;
+    height = is8k || is4k ? 820 : 576;
+  } else if (aspectRatio === '1:1') {
+    width = is8k || is4k ? 1440 : 1024;
+    height = is8k || is4k ? 1440 : 1024;
   }
 
   const randomSeed = Math.floor(Math.random() * 9999999);
-  const cleanPrompt = encodeURIComponent(styledPrompt.slice(0, 300));
+  const cleanPrompt = encodeURIComponent(styledPrompt.slice(0, 420));
   const neuralUrl = `https://image.pollinations.ai/prompt/${cleanPrompt}?width=${width}&height=${height}&seed=${randomSeed}&nologo=true&model=flux`;
 
   return {

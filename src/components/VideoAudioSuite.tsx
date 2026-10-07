@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Film,
   Music,
@@ -29,6 +29,12 @@ import {
   TARGET_PLATFORMS,
 } from './SocialPlatformEditingToolbar.tsx';
 import { UniversalMediaCaptureToolbar } from './UniversalMediaCaptureToolbar.tsx';
+import {
+  SubjectFormCategory,
+  SUBJECT_FORM_PRESETS,
+  detectSubjectFromPrompt,
+  expandUniversalPopCulturePrompt,
+} from '../lib/subjectDetector.ts';
 
 interface VideoAudioSuiteProps {
   user?: UserProfile;
@@ -105,7 +111,7 @@ export const VideoAudioSuite: React.FC<VideoAudioSuiteProps> = ({
   const [selectedExplicitGenre, setSelectedExplicitGenre] = useState<string>('cinematic_hyperrealism');
   const [videoPrompt, setVideoPrompt] = useState('Cinematic drone hyperlapse through glowing Cyberpunk skyline, neon rain reflections, smooth camera pan');
   const [cinematicStyle, setCinematicStyle] = useState('Studio Ghibli Anime');
-  const [videoGenderFocus, setVideoGenderFocus] = useState<'female' | 'male' | 'couple' | 'unisex'>('female');
+  const [videoSubjectFocus, setVideoSubjectFocus] = useState<SubjectFormCategory>('auto');
   const [videoResolution, setVideoResolution] = useState<ResolutionTier>('8K');
   const [fps, setFps] = useState(60);
   const [selectedDurationId, setSelectedDurationId] = useState<string>('1hr');
@@ -113,6 +119,11 @@ export const VideoAudioSuite: React.FC<VideoAudioSuiteProps> = ({
   const [videoBgmTrack, setVideoBgmTrack] = useState<string>('Epic Orchestral Masterpiece');
   const [videoBgmVolume, setVideoBgmVolume] = useState<number>(85);
   const [isVideoEncoding, setIsVideoEncoding] = useState(false);
+
+  // Real-time AI Subject Scanner for Video: Automatically determines Place, Male, Female, Creature, World, Couple, Vehicle, or Group
+  const autoDetectedVideoSubject = useMemo(() => {
+    return detectSubjectFromPrompt(videoPrompt);
+  }, [videoPrompt]);
 
   // Social Platform Editing Suite State
   const [editingState, setEditingState] = useState<EditingState>({
@@ -140,32 +151,45 @@ export const VideoAudioSuite: React.FC<VideoAudioSuiteProps> = ({
   const [videoLetterGroup, setVideoLetterGroup] = useState<string>('ALL');
 
   const CINEMATIC_STYLES = [
-    { id: 'A', letter: 'A', name: 'Anime & Studio Ghibli Motion', icon: '🌿', region: 'Japan' },
-    { id: 'B', letter: 'B', name: 'Bollywood & Mass Action Motion', icon: '🎥', region: 'India' },
-    { id: 'C', letter: 'C', name: 'Cyberpunk Neon Synthwave', icon: '🌆', region: 'Global' },
-    { id: 'D', letter: 'D', name: 'Dark Erotic Thriller & Neo-Noir (Explicit 18+ Uncensored)', icon: '🔞', region: 'Hollywood/Global' },
-    { id: 'E', letter: 'E', name: 'Extreme Body Horror & Visceral Motion (Unrated)', icon: '🩸', region: 'Extreme Cinema' },
-    { id: 'F', letter: 'F', name: 'Folk Horror & Occult Ritual Motion', icon: '🕯️', region: 'Nordic/Global' },
-    { id: 'G', letter: 'G', name: 'Grindhouse B-Movie & Cult Exploitation (Unfiltered)', icon: '🎞️', region: 'USA/Global' },
-    { id: 'H', letter: 'H', name: 'Hardcore Mafia & Underworld Crime Motion', icon: '💼', region: 'Global Underworld' },
-    { id: 'I', letter: 'I', name: 'Independent Festival Cinema & Art-House', icon: '🎟️', region: 'Global Art-House' },
-    { id: 'J', letter: 'J', name: 'Japanese Samurai Katana Motion', icon: '🌊', region: 'Japan' },
-    { id: 'K', letter: 'K', name: 'Korean Revenge Thriller Motion', icon: '📱', region: 'South Korea' },
-    { id: 'L', letter: 'L', name: 'Lo-Fi Chill & 16-Bit Pixel Anim', icon: '🎮', region: 'Global' },
-    { id: 'M', letter: 'M', name: 'Manga & Comic Motion Comic', icon: '📖', region: 'Japan/USA' },
-    { id: 'N', letter: 'N', name: 'Neo-Noir Shadow Detective & Femme Fatale', icon: '🎬', region: 'Hollywood' },
-    { id: 'O', letter: 'O', name: 'Occult Dark Fantasy & Demonology', icon: '🔮', region: 'Global' },
-    { id: 'P', letter: 'P', name: 'Photorealistic 8K Anamorphic IMAX', icon: '📸', region: 'Global' },
-    { id: 'Q', letter: 'Q', name: 'Quantum Hologram Glitch Matrix', icon: '⚡', region: 'Cyber' },
-    { id: 'R', letter: 'R', name: 'Retro 80s Synth & Vaporwave', icon: '📼', region: 'USA/Global' },
-    { id: 'S', letter: 'S', name: 'Surrealist Avant-Garde & Dream Motion', icon: '🌀', region: 'Europe/Global' },
-    { id: 'T', letter: 'T', name: 'Uncensored Shock Comedy & Satire', icon: '🎭', region: 'Global' },
-    { id: 'U', letter: 'U', name: 'Unreal Engine 5 Octane Cinematic', icon: '🕹️', region: 'Game Engine' },
-    { id: 'V', letter: 'V', name: 'Vintage Spaghetti Western Outlaw', icon: '🤠', region: 'Italy/USA' },
-    { id: 'W', letter: 'W', name: 'World Underground & Independent Rebel Cinema', icon: '🎥', region: 'Global Rebel' },
-    { id: 'X', letter: 'X', name: 'Xtreme Action & Car Chase Heist', icon: '🏎️', region: 'Hollywood' },
-    { id: 'Y', letter: 'Y', name: 'Yakuza Underground & Tokyo Neon Crime', icon: '🏮', region: 'Japan' },
-    { id: 'Z', letter: 'Z', name: 'Zen Shanshui Mist & Wuxia Fly', icon: '⛰️', region: 'China' },
+    { id: 'A', letter: 'A', name: 'Anime & Studio Ghibli Motion', icon: '🌿', region: 'Japan', category: 'anime' },
+    { id: 'B', letter: 'B', name: 'Bollywood & Mass Action Motion', icon: '🎥', region: 'India', category: 'cinema' },
+
+    // DEDICATED CARTOON & TOON MOTION CINEMA STYLES
+    { id: 'C_disney', letter: 'C', name: 'Classic 2D Cartoon (Disney & Looney Tunes Vintage)', icon: '🎨', region: 'USA / Golden Age', category: 'cartoon' },
+    { id: 'C_pixar', letter: 'C', name: '3D CGI Cartoon Motion (Pixar & DreamWorks 60fps)', icon: '🧸', region: 'Global 3D Toon', category: 'cartoon' },
+    { id: 'C_cn', letter: 'C', name: 'Cartoon Network & 90s/2000s Pop Toon (Bold Lineart)', icon: '📺', region: 'USA / Pop Toon', category: 'cartoon' },
+    { id: 'C_india', letter: 'C', name: 'Indian Mythological Cartoon (Chhota Bheem & Amar Chitra Katha)', icon: '🇮🇳', region: 'India Animation', category: 'cartoon' },
+    { id: 'C_comic', letter: 'C', name: 'Sunday Comic Strip & Caricature Animation', icon: '📰', region: 'Global Comic', category: 'cartoon' },
+    { id: 'C_bande', letter: 'C', name: 'French-Belgian Bande Dessinée Cartoon Motion (Tintin)', icon: '🥐', region: 'Franco-Belgian', category: 'cartoon' },
+    { id: 'C_clay', letter: 'C', name: 'Claymation & Stop-Motion Cartoon (Wallace & Gromit)', icon: '🧩', region: 'UK / Aardman', category: 'cartoon' },
+    { id: 'C_chibi', letter: 'C', name: 'Chibi & Kawaii Cute Cartoon Motion', icon: '🌸', region: 'Japan Kawaii', category: 'cartoon' },
+    { id: 'C_hero', letter: 'C', name: 'Saturday Morning Superhero Cartoon Motion', icon: '💥', region: 'USA Superhero', category: 'cartoon' },
+    { id: 'C_story', letter: 'C', name: 'Children Storybook Watercolor Cartoon Motion', icon: '🖍️', region: 'Europe / UK', category: 'cartoon' },
+
+    { id: 'C', letter: 'C', name: 'Cyberpunk Neon Synthwave', icon: '🌆', region: 'Global', category: 'cyberpunk' },
+    { id: 'D', letter: 'D', name: 'Dark Erotic Thriller & Neo-Noir (Explicit 18+ Uncensored)', icon: '🔞', region: 'Hollywood/Global', category: 'cinema' },
+    { id: 'E', letter: 'E', name: 'Extreme Body Horror & Visceral Motion (Unrated)', icon: '🩸', region: 'Extreme Cinema', category: 'horror' },
+    { id: 'F', letter: 'F', name: 'Folk Horror & Occult Ritual Motion', icon: '🕯️', region: 'Nordic/Global', category: 'horror' },
+    { id: 'G', letter: 'G', name: 'Grindhouse B-Movie & Cult Exploitation (Unfiltered)', icon: '🎞️', region: 'USA/Global', category: 'cinema' },
+    { id: 'H', letter: 'H', name: 'Hardcore Mafia & Underworld Crime Motion', icon: '💼', region: 'Global Underworld', category: 'cinema' },
+    { id: 'I', letter: 'I', name: 'Independent Festival Cinema & Art-House', icon: '🎟️', region: 'Global Art-House', category: 'cinema' },
+    { id: 'J', letter: 'J', name: 'Japanese Samurai Katana Motion', icon: '🌊', region: 'Japan', category: 'anime' },
+    { id: 'K', letter: 'K', name: 'Korean Revenge Thriller Motion', icon: '📱', region: 'South Korea', category: 'anime' },
+    { id: 'L', letter: 'L', name: 'Lo-Fi Chill & 16-Bit Pixel Anim', icon: '🎮', region: 'Global', category: 'digital' },
+    { id: 'M', letter: 'M', name: 'Manga & Comic Motion Comic', icon: '📖', region: 'Japan/USA', category: 'anime' },
+    { id: 'N', letter: 'N', name: 'Neo-Noir Shadow Detective & Femme Fatale', icon: '🎬', region: 'Hollywood', category: 'cinema' },
+    { id: 'O', letter: 'O', name: 'Occult Dark Fantasy & Demonology', icon: '🔮', region: 'Global', category: 'fantasy' },
+    { id: 'P', letter: 'P', name: 'Photorealistic 8K Anamorphic IMAX', icon: '📸', region: 'Global', category: 'cinema' },
+    { id: 'Q', letter: 'Q', name: 'Quantum Hologram Glitch Matrix', icon: '⚡', region: 'Cyber', category: 'cyberpunk' },
+    { id: 'R', letter: 'R', name: 'Retro 80s Synth & Vaporwave', icon: '📼', region: 'USA/Global', category: 'cyberpunk' },
+    { id: 'S', letter: 'S', name: 'Surrealist Avant-Garde & Dream Motion', icon: '🌀', region: 'Europe/Global', category: 'fantasy' },
+    { id: 'T', letter: 'T', name: 'Uncensored Shock Comedy & Satire', icon: '🎭', region: 'Global', category: 'cinema' },
+    { id: 'U', letter: 'U', name: 'Unreal Engine 5 Octane Cinematic', icon: '🕹️', region: 'Game Engine', category: 'digital' },
+    { id: 'V', letter: 'V', name: 'Vintage Spaghetti Western Outlaw', icon: '🤠', region: 'Italy/USA', category: 'cinema' },
+    { id: 'W', letter: 'W', name: 'World Underground & Independent Rebel Cinema', icon: '🎥', region: 'Global Rebel', category: 'cinema' },
+    { id: 'X', letter: 'X', name: 'Xtreme Action & Car Chase Heist', icon: '🏎️', region: 'Hollywood', category: 'cinema' },
+    { id: 'Y', letter: 'Y', name: 'Yakuza Underground & Tokyo Neon Crime', icon: '🏮', region: 'Japan', category: 'cinema' },
+    { id: 'Z', letter: 'Z', name: 'Zen Shanshui Mist & Wuxia Fly', icon: '⛰️', region: 'China', category: 'fantasy' },
   ];
 
   const GENDER_PRESETS = [
@@ -288,8 +312,15 @@ export const VideoAudioSuite: React.FC<VideoAudioSuiteProps> = ({
 
     try {
       setIsVideoEncoding(true);
+      const subjectSuffix =
+        videoSubjectFocus === 'auto'
+          ? autoDetectedVideoSubject.promptSuffix
+          : (SUBJECT_FORM_PRESETS.find((p) => p.id === videoSubjectFocus)?.promptSuffix || '');
+      const enrichedPopCultureVideoPrompt = expandUniversalPopCulturePrompt(videoPrompt);
+      const finalPrompt = enrichedPopCultureVideoPrompt + (subjectSuffix ? subjectSuffix : '');
+
       const res = await triggerVideoGen({
-        prompt: videoPrompt,
+        prompt: finalPrompt,
         cinematicStyle,
         fps,
         resolution: videoResolution,
@@ -588,6 +619,9 @@ export const VideoAudioSuite: React.FC<VideoAudioSuiteProps> = ({
                     id={`video-res-btn-${v.id}`}
                     onClick={() => {
                       setVideoResolution(v.id);
+                      if (['4K', '8K'].includes(v.id)) {
+                        setEditingState((prev) => ({ ...prev, blurLevel: 0 }));
+                      }
                       if (fps > v.maxFps) setFps(v.maxFps);
                     }}
                     className={`py-2 px-2 rounded-xl text-center border transition-all flex flex-col items-center justify-center ${
@@ -631,50 +665,96 @@ export const VideoAudioSuite: React.FC<VideoAudioSuiteProps> = ({
                 />
               </div>
 
-              {/* Character Gender Focus for Video */}
-              <div>
-                <label className="text-xs text-slate-300 block mb-1 font-semibold">Subject Lead Focus</label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {GENDER_PRESETS.map((g) => {
-                    const isSel = videoGenderFocus === g.id;
+              {/* Character & Subject Form Selector for Video (Auto-Detection Active by Default) */}
+              <div className="space-y-1.5 p-3 rounded-2xl bg-slate-950/60 border border-slate-800">
+                <div className="flex items-center justify-between flex-wrap gap-1">
+                  <label className="text-xs text-white font-bold font-['Syne'] flex items-center gap-1.5">
+                    <span>Subject & Form Focus (विषय / पात्र / स्थान)</span>
+                  </label>
+                  {videoSubjectFocus === 'auto' ? (
+                    <div className={`px-2 py-0.5 rounded-full border text-[10px] font-mono font-bold flex items-center gap-1 shadow-sm ${autoDetectedVideoSubject.badgeColor}`}>
+                      <Sparkles className="w-3 h-3 animate-spin text-cyan-400" />
+                      <span>AI Auto: {autoDetectedVideoSubject.label}</span>
+                    </div>
+                  ) : (
+                    <div className="px-2 py-0.5 rounded-full border border-cyan-500/50 bg-cyan-950/80 text-cyan-300 text-[10px] font-mono font-bold">
+                      <span>Locked: {SUBJECT_FORM_PRESETS.find((p) => p.id === videoSubjectFocus)?.label}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="text-[10px] text-slate-400 font-mono">
+                  {videoSubjectFocus === 'auto' ? (
+                    <span>💡 {autoDetectedVideoSubject.explanation} (Camera and character motion align dynamically!)</span>
+                  ) : (
+                    <span>{SUBJECT_FORM_PRESETS.find((p) => p.id === videoSubjectFocus)?.description}</span>
+                  )}
+                </div>
+
+                {/* Preset Pills */}
+                <div className="grid grid-cols-3 gap-1.5 pt-1">
+                  {SUBJECT_FORM_PRESETS.map((p) => {
+                    const isSel = videoSubjectFocus === p.id;
+                    const isAutoMatch = videoSubjectFocus === 'auto' && p.id === autoDetectedVideoSubject.detectedCategory;
                     return (
                       <button
-                        key={g.id}
+                        key={p.id}
                         type="button"
-                        onClick={() => setVideoGenderFocus(g.id as 'female' | 'male' | 'couple' | 'unisex')}
-                        className={`py-1.5 px-2.5 rounded-xl text-xs font-semibold border text-left truncate transition-all ${
+                        onClick={() => {
+                          setVideoSubjectFocus(p.id);
+                          if (p.id === 'auto') {
+                            onNotify('AI Auto-Detection Active', `Video prompt recognized as: ${autoDetectedVideoSubject.label}`, 'info');
+                          } else {
+                            onNotify('Video Subject Locked', `Subject category set to ${p.label}`, 'info');
+                          }
+                        }}
+                        className={`py-1.5 px-2 rounded-xl text-[11px] font-semibold border text-left truncate transition-all flex items-center justify-between ${
                           isSel
-                            ? 'bg-cyan-900 text-white border-cyan-400 font-bold'
-                            : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
+                            ? 'bg-gradient-to-r from-cyan-600 to-indigo-600 text-white border-cyan-300 shadow-md font-bold'
+                            : isAutoMatch
+                            ? 'bg-cyan-950/70 text-cyan-300 border-cyan-500/60'
+                            : 'bg-slate-900/70 text-slate-400 border-slate-800 hover:text-white hover:bg-slate-800/80'
                         }`}
+                        title={p.description}
                       >
-                        {g.label}
+                        <span className="truncate">{p.label}</span>
+                        {p.id === 'auto' && (
+                          <span className="text-[8px] px-1 py-0.2 rounded bg-cyan-950 border border-cyan-600 text-cyan-300 shrink-0 font-mono">
+                            AUTO
+                          </span>
+                        )}
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* Art Styles & Animation presets */}
+              {/* Art Styles & Animation presets (With 10+ Cartoon / Toon Motion Styles) */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs text-slate-300 font-bold flex items-center gap-1.5">
                     <span className="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 text-[10px] font-mono border border-cyan-800">A-Z</span>
                     Global World Motion Styles Dictionary
                   </label>
-                  <span className="text-[10px] text-slate-400 font-mono">26 Worldwide Styles</span>
+                  <span className="text-[10px] text-amber-300 font-mono bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/60 font-bold">
+                    36 Styles • 10 Toons / Cartoons
+                  </span>
                 </div>
 
                 {/* Letter Group Filter Bar */}
                 <div className="flex items-center gap-1 mb-2 overflow-x-auto pb-1 text-[10px] font-mono">
-                  {['ALL', 'A-E', 'F-J', 'K-O', 'P-T', 'U-Z'].map((grp) => (
+                  {['ALL', '🎨 CARTOON', 'A-E', 'F-J', 'K-O', 'P-T', 'U-Z'].map((grp) => (
                     <button
                       key={grp}
                       type="button"
                       onClick={() => setVideoLetterGroup(grp)}
-                      className={`px-2 py-0.5 rounded-lg border transition-all ${
+                      className={`px-2.5 py-1 rounded-lg border transition-all shrink-0 font-bold ${
                         videoLetterGroup === grp
-                          ? 'bg-cyan-600 text-white border-cyan-400 font-bold'
+                          ? grp === '🎨 CARTOON'
+                            ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white border-pink-400 shadow-md'
+                            : 'bg-cyan-600 text-white border-cyan-400 shadow-md'
+                          : grp === '🎨 CARTOON'
+                          ? 'bg-pink-950/60 text-pink-300 border-pink-800/80 hover:bg-pink-900/60'
                           : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
                       }`}
                     >
@@ -686,6 +766,7 @@ export const VideoAudioSuite: React.FC<VideoAudioSuiteProps> = ({
                 <div className="grid grid-cols-2 gap-1.5 max-h-[220px] overflow-y-auto pr-1">
                   {CINEMATIC_STYLES.filter((st) => {
                     if (videoLetterGroup === 'ALL') return true;
+                    if (videoLetterGroup === '🎨 CARTOON') return st.category === 'cartoon';
                     if (videoLetterGroup === 'A-E') return ['A','B','C','D','E'].includes(st.letter);
                     if (videoLetterGroup === 'F-J') return ['F','G','H','I','J'].includes(st.letter);
                     if (videoLetterGroup === 'K-O') return ['K','L','M','N','O'].includes(st.letter);
@@ -931,11 +1012,24 @@ export const VideoAudioSuite: React.FC<VideoAudioSuiteProps> = ({
                   <Radio className="w-4 h-4 text-emerald-400 animate-pulse" /> Real-Time Video Player
                 </span>
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingState((prev) => ({ ...prev, blurLevel: 0, zoom: 1, panX: 0, panY: 0 }));
+                      onNotify('Zero-Blur 8K Restored', 'Removed blur & restored maximum video clarity.', 'success');
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 shadow-sm transition-all"
+                    title="Clear video blur and restore 8K crystal sharpness"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Zero-Blur 8K</span>
+                  </button>
+
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-cyan-300 font-bold">
                     {videoResolution} • {activeVideoRes.dimensions} • {fps} FPS
                   </span>
                   <a
-                    href="https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?auto=format&fit=crop&w=1400&q=80"
+                    href="https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?auto=format&fit=crop&w=3840&q=95"
                     download={`iCALLOG_${videoResolution}_Clip.mp4`}
                     className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center gap-1"
                   >
@@ -944,16 +1038,17 @@ export const VideoAudioSuite: React.FC<VideoAudioSuiteProps> = ({
                 </div>
               </div>
 
-              <div className={`rounded-2xl overflow-hidden relative border border-slate-800 bg-black flex items-center justify-center transition-all ${
+              <div className={`rounded-2xl overflow-hidden relative border border-slate-800 bg-slate-950 flex items-center justify-center transition-all ${
                 editingState.isFullscreen ? 'fixed inset-4 z-[9999] shadow-2xl h-auto' : 'h-[420px]'
               }`}>
                 <img
-                  src="https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?auto=format&fit=crop&w=1400&q=80"
+                  src="https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?auto=format&fit=crop&w=3840&q=95"
                   alt={`${videoResolution} Video Preview`}
-                  className="w-full h-full object-cover opacity-85 transition-transform duration-300"
+                  className="w-full h-full object-cover opacity-100 transition-transform duration-300"
                   style={{
                     transform: `scale(${editingState.zoom}) translate(${editingState.panX}px, ${editingState.panY}px)`,
-                    filter: `blur(${editingState.blurLevel}px)`,
+                    filter: editingState.blurLevel > 0 ? `blur(${editingState.blurLevel}px)` : 'none',
+                    imageRendering: (videoResolution === '8K' || videoResolution === '4K') ? 'crisp-edges' : 'auto',
                   }}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent flex flex-col justify-end p-5 pointer-events-none">

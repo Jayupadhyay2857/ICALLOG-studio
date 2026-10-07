@@ -1113,7 +1113,7 @@ export const OmniEnhanceModal: React.FC<OmniEnhanceModalProps> = ({
                             </a>
                           </div>
                         </div>
-                        <div className="relative aspect-video rounded-2xl overflow-hidden border border-cyan-500/40 shadow-2xl bg-black">
+                        <div className="relative aspect-video rounded-2xl overflow-hidden border border-cyan-500/40 shadow-2xl bg-slate-950">
                           <img
                             src={generatedPreviewUrl}
                             alt="AI Generated Output"
@@ -1121,10 +1121,11 @@ export const OmniEnhanceModal: React.FC<OmniEnhanceModalProps> = ({
                               if (!generatedPreviewUrl.startsWith('/api/ai/image-proxy') && generatedPreviewUrl.startsWith('http')) {
                                 setGeneratedPreviewUrl(`/api/ai/image-proxy?url=${encodeURIComponent(generatedPreviewUrl)}`);
                               } else {
-                                setGeneratedPreviewUrl('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1600&q=90');
+                                setGeneratedPreviewUrl('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=3840&q=95');
                               }
                             }}
                             className="w-full h-full object-cover"
+                            style={{ imageRendering: 'crisp-edges' }}
                           />
                         </div>
                       </div>

@@ -98,6 +98,7 @@ const DIRECTOR_STYLES = [
 const GENRE_PRESETS = [
   'A - Anime & Studio Ghibli Fantasy (Japan)',
   'B - Bollywood & Mass Action Blockbuster (India)',
+  'C - Cartoon & 3D Animation Cinema (Disney / Pixar / Toons)',
   'C - Cyberpunk Neon Synthwave Sci-Fi (Global)',
   'D - Dark Erotic Thriller & Neo-Noir (Explicit 18+ Uncensored)',
   'E - Extreme Body Horror & Visceral Splatter (Unrated)',
