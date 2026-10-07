@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Wand2,
   Image as ImageIcon,
@@ -97,7 +97,9 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({
   );
 
   const [selectedLetterGroup, setSelectedLetterGroup] = useState<string>('ALL');
-  const [starterCategory, setStarterCategory] = useState<'cartoons' | 'anime' | 'ott' | 'movies' | 'games' | 'mature'>('cartoons');
+  const [starterCategory, setStarterCategory] = useState<
+    'all_characters' | 'superheroes' | 'anime' | 'gods_history' | 'cartoons' | 'movies' | 'ott' | 'games' | 'celebrities' | 'fantasy_scifi' | 'mature'
+  >('all_characters');
 
   // Real-time AI Subject Scanner: Automatically determines Place, Male, Female, Creature, World, Couple, Vehicle, or Group
   const autoDetectedSubject = useMemo(() => {
@@ -208,6 +210,44 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({
   const memeCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const activeResConfig = RESOLUTION_SPECTRUM.find((r) => r.id === resolution) || RESOLUTION_SPECTRUM[7];
+
+  // Listen for pre-filled prompts or global entertainment references
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('icallog_prefill_prompt');
+      if (stored) {
+        setPrompt(stored);
+        localStorage.removeItem('icallog_prefill_prompt');
+      }
+    } catch {
+      // ignore
+    }
+
+    const handleApplyPrompt = (e: Event) => {
+      const custom = e as CustomEvent<{ prompt?: string; tab?: string }>;
+      if (custom.detail?.prompt) {
+        setPrompt(custom.detail.prompt);
+      }
+    };
+
+    const handleApplyEntertainment = (e: Event) => {
+      const custom = e as CustomEvent<{ studioPresets?: { imagePrompt?: string; imageStyle?: string } }>;
+      if (custom.detail?.studioPresets?.imagePrompt) {
+        setPrompt(custom.detail.studioPresets.imagePrompt);
+        if (custom.detail.studioPresets.imageStyle) {
+          setStyle(custom.detail.studioPresets.imageStyle);
+        }
+      }
+    };
+
+    window.addEventListener('icallog_apply_prompt', handleApplyPrompt);
+    window.addEventListener('icallog_apply_entertainment_reference', handleApplyEntertainment);
+
+    return () => {
+      window.removeEventListener('icallog_apply_prompt', handleApplyPrompt);
+      window.removeEventListener('icallog_apply_entertainment_reference', handleApplyEntertainment);
+    };
+  }, []);
 
   // Client-Side 8K High-Frequency Super-Sampling & Sharpness Engine (Eliminates Blur & Black Screen)
   const executeClient8kSuperSampling = async (sourceUrl: string): Promise<string> => {
@@ -836,11 +876,16 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({
                   {/* Genre Category Pills */}
                   <div className="flex items-center gap-1 mb-2 overflow-x-auto pb-1 text-[10px] font-mono">
                     {[
+                      { id: 'all_characters', label: '🌍 All Characters (Global)' },
+                      { id: 'superheroes', label: '🦸 Superheroes & Comics' },
+                      { id: 'gods_history', label: '🔱 Gods & Historical Legends' },
                       { id: 'cartoons', label: '🧸 Cartoons & Toons' },
                       { id: 'anime', label: '⚔️ Anime & Manga' },
-                      { id: 'ott', label: '📺 OTT Web Series' },
                       { id: 'movies', label: '🎬 Blockbuster Cinema' },
+                      { id: 'ott', label: '📺 OTT Web Series' },
                       { id: 'games', label: '🎮 Video Games' },
+                      { id: 'celebrities', label: '👑 Celebrities & VIPs' },
+                      { id: 'fantasy_scifi', label: '🧙 Sci-Fi & Fantasy' },
                       { id: 'mature', label: '🔞 18+ Mature & Noir' },
                     ].map((tab) => (
                       <button
@@ -860,6 +905,84 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({
 
                   {/* Dynamic Item Chips Based on Active Category */}
                   <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-thin text-[10px]">
+                    {starterCategory === 'all_characters' &&
+                      [
+                        { label: '🇮🇳 Motu Patlu Samosa', query: 'Motu and Patlu eating samosas in Furfuri Nagar town with Doctor Jhatka and Ghasitaram', style: '3D CGI Cartoon Animation (Pixar & DreamWorks)' },
+                        { label: '🔱 Lord Shiva Mahadev', query: 'Lord Shiva Mahadev meditating on Mount Kailash with crescent moon, glowing third eye and Trishul', style: 'Indian Mythological Cartoon (Chhota Bheem & Amar Chitra Katha)' },
+                        { label: '🦾 Iron Man Nanotech', query: 'Iron Man Tony Stark in glowing nanotech armor hovering with blue repulsor blasts over city', style: 'Photorealistic 8K Anamorphic IMAX' },
+                        { label: '🍥 Naruto Rasengan', query: 'Naruto Uzumaki in sage mode creating glowing blue Rasengan chakra in Leaf Village', style: 'Anime & Studio Ghibli' },
+                        { label: '🏏 Virat Kohli Roar', query: 'Virat Kohli in blue cricket jersey celebrating victory with roaring passion under stadium lights', style: 'Photorealistic 8K Anamorphic IMAX' },
+                        { label: '👑 Chhatrapati Shivaji Maharaj', query: 'Chhatrapati Shivaji Maharaj in royal Maratha warrior attire with sword on sinhasan throne in Raigad', style: 'Bollywood & Mass Action Blockbuster' },
+                        { label: '🪓 God of War Kratos', query: 'Kratos holding frozen glowing Leviathan axe beside Atreus in snowy ancient Norse mountain', style: 'Unreal Engine 5 Octane 3D' },
+                        { label: '🔥 KGF Rocky Bhai', query: 'Rocky Bhai in black tailored suit firing heavy machine gun with flying gold dust and sparks', style: 'Bollywood & Mass Action Blockbuster' },
+                        { label: '🪳 Oggy vs Cockroaches', query: 'Oggy the blue cat chasing the three cheeky cockroaches Joey Dee Dee and Marky', style: 'Cartoon Network & 90s/2000s Pop Toon' },
+                        { label: '👁️ Gojo Satoru Void', query: 'Gojo Satoru lifting blindfold with glowing infinite blue eyes activating Domain Expansion', style: 'Anime & Studio Ghibli' },
+                      ].map((item) => (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() => {
+                            setPrompt(item.query);
+                            setStyle(item.style);
+                            onNotify('Character Universe Selected', `Loaded "${item.label}". Click "Render Image" or "⚡ Enhance & Render Maal"!`, 'success');
+                          }}
+                          className="px-2.5 py-1 rounded-xl bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-600/40 hover:border-cyan-400 text-cyan-200 hover:text-white shrink-0 font-medium transition-all hover:scale-105 active:scale-95 shadow-sm"
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+
+                    {starterCategory === 'superheroes' &&
+                      [
+                        { label: '🦾 Iron Man Nanotech', query: 'Iron Man Tony Stark in glowing nanotech armor hovering with blue repulsor blasts over city', style: 'Photorealistic 8K Anamorphic IMAX' },
+                        { label: '🦇 Batman Dark Knight', query: 'The Dark Knight Batman on Gotham skyscraper gargoyle in thunderstorm rain with Bat-Signal', style: 'Neo-Noir Shadow Detective & Femme Fatale' },
+                        { label: '🕸️ Spider-Man Web Swing', query: 'Spider-Man Peter Parker web-slinging between New York City skyscrapers at golden sunset', style: 'Photorealistic 8K Anamorphic IMAX' },
+                        { label: '⚡ Thor Thunderstorm', query: 'Thor God of Thunder with glowing blue lightning crackling from Mjolnir hammer and Stormbreaker', style: 'Photorealistic 8K Anamorphic IMAX' },
+                        { label: '🔴 Superman Flight', query: 'Superman hovering above Metropolis skyline with red cape billowing and glowing heat vision eyes', style: 'Photorealistic 8K Anamorphic IMAX' },
+                        { label: '🃏 The Joker Chaos', query: 'The Joker in purple suit with green hair and sinister smile on foggy Gotham street', style: 'Dark Erotic Thriller & Neo-Noir (Explicit 18+ Uncensored)' },
+                        { label: '⚔️ Deadpool & Wolverine', query: 'Deadpool with twin katanas and Wolverine with glowing adamantium claws in epic team-up pose', style: 'Photorealistic 8K Anamorphic IMAX' },
+                        { label: '🇮🇳 Shaktimaan Hero', query: 'Shaktimaan Indian superhero in maroon suit with golden solar chakra spinning with yogic cosmic power', style: 'Bollywood & Mass Action Blockbuster' },
+                        { label: '🇮🇳 Krrish Leaping', query: 'Krrish superhero in black mask and flowing long coat leaping across futuristic skyline', style: 'Bollywood & Mass Action Blockbuster' },
+                      ].map((item) => (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() => {
+                            setPrompt(item.query);
+                            setStyle(item.style);
+                            onNotify('Superhero Selected', `Loaded "${item.label}". Click "Render Image" or "⚡ Enhance & Render Maal"!`, 'success');
+                          }}
+                          className="px-2.5 py-1 rounded-xl bg-sky-950/40 hover:bg-sky-900/60 border border-sky-600/40 hover:border-sky-400 text-sky-200 hover:text-white shrink-0 font-medium transition-all hover:scale-105 active:scale-95 shadow-sm"
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+
+                    {starterCategory === 'gods_history' &&
+                      [
+                        { label: '🔱 Lord Shiva Mahadev', query: 'Lord Shiva Mahadev in deep meditation on snowy Mount Kailash with crescent moon, sacred Ganga and Trishul', style: 'Photorealistic 8K Anamorphic IMAX' },
+                        { label: '🦚 Lord Krishna Flute', query: 'Lord Krishna in Vrindavan playing divine golden flute with peacock feather crown and yellow silk pitambar', style: 'Photorealistic 8K Anamorphic IMAX' },
+                        { label: '🏹 Lord Rama Ayodhya', query: 'Lord Rama with golden bow Kodanda in Ayodhya palace with divine radiant golden aura', style: 'Photorealistic 8K Anamorphic IMAX' },
+                        { label: '⛰️ Hanuman Dronagiri', query: 'Lord Hanuman carrying glowing Sanjeevani Dronagiri mountain soaring across starry night sky', style: 'Photorealistic 8K Anamorphic IMAX' },
+                        { label: '👑 Chhatrapati Shivaji Maharaj', query: 'Chhatrapati Shivaji Maharaj in royal Maratha warrior attire with sword on sinhasan throne in Raigad', style: 'Bollywood & Mass Action Blockbuster' },
+                        { label: '⚡ Zeus Mount Olympus', query: 'Zeus King of Greek Gods holding crackling lightning bolt atop Mount Olympus surrounded by divine clouds', style: 'Photorealistic 8K Anamorphic IMAX' },
+                        { label: '👑 Cleopatra Nile Queen', query: 'Cleopatra Queen of Egypt in regal golden gown and headdress at sunset overlooking pyramids', style: 'Photorealistic 8K Anamorphic IMAX' },
+                        { label: '⚔️ Spartan 300 King Leonidas', query: 'Spartan King Leonidas in red cape with bronze shield and spear defending the fiery Hot Gates', style: 'Photorealistic 8K Anamorphic IMAX' },
+                      ].map((item) => (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() => {
+                            setPrompt(item.query);
+                            setStyle(item.style);
+                            onNotify('Mythological Legend Selected', `Loaded "${item.label}". Click "Render Image" or "⚡ Enhance & Render Maal"!`, 'success');
+                          }}
+                          className="px-2.5 py-1 rounded-xl bg-yellow-950/40 hover:bg-yellow-900/60 border border-yellow-600/40 hover:border-yellow-400 text-yellow-200 hover:text-white shrink-0 font-medium transition-all hover:scale-105 active:scale-95 shadow-sm"
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+
                     {starterCategory === 'cartoons' &&
                       [
                         { label: '🇮🇳 Motu Patlu (Furfuri Nagar)', query: 'Motu and Patlu eating samosas in Furfuri Nagar town with Doctor Jhatka and Ghasitaram', style: '3D CGI Cartoon Animation (Pixar & DreamWorks)' },
@@ -909,6 +1032,51 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({
                             onNotify('Anime Legend Selected', `Loaded "${item.label}". Click "Render Image" or "⚡ Enhance & Render Maal"!`, 'success');
                           }}
                           className="px-2.5 py-1 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-600/40 hover:border-rose-400 text-rose-200 hover:text-white shrink-0 font-medium transition-all hover:scale-105 active:scale-95 shadow-sm"
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+
+                    {starterCategory === 'celebrities' &&
+                      [
+                        { label: '🏏 Virat Kohli Arena', query: 'Virat Kohli Indian cricket maestro in blue team jersey celebrating century under glowing stadium floodlights', style: 'Photorealistic 8K Anamorphic IMAX' },
+                        { label: '⚽ Cristiano Ronaldo SIUU', query: 'Cristiano Ronaldo leaping in iconic SIUU goal celebration in packed arena under golden floodlights', style: 'Photorealistic 8K Anamorphic IMAX' },
+                        { label: '🏆 Lionel Messi Trophy', query: 'Lionel Messi lifting golden world championship trophy with golden confetti showering in stadium', style: 'Photorealistic 8K Anamorphic IMAX' },
+                        { label: '🎬 Shah Rukh Khan Arms Open', query: 'Shah Rukh Khan King of Bollywood in iconic open arms romantic hero pose on scenic mountain cliff', style: 'Bollywood & Mass Action Blockbuster' },
+                        { label: '🚀 Elon Musk Starship', query: 'Elon Musk standing in front of towering silver SpaceX Starship rocket and Tesla Cybertruck at sunset', style: 'Photorealistic 8K Anamorphic IMAX' },
+                        { label: '🥊 Bruce Lee Martial Arts', query: 'Bruce Lee legendary kung fu master in dynamic high kick fighting stance in wooden dojo', style: 'Photorealistic 8K Anamorphic IMAX' },
+                      ].map((item) => (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() => {
+                            setPrompt(item.query);
+                            setStyle(item.style);
+                            onNotify('Celebrity Icon Selected', `Loaded "${item.label}". Click "Render Image" or "⚡ Enhance & Render Maal"!`, 'success');
+                          }}
+                          className="px-2.5 py-1 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-600/40 hover:border-emerald-400 text-emerald-200 hover:text-white shrink-0 font-medium transition-all hover:scale-105 active:scale-95 shadow-sm"
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+
+                    {starterCategory === 'fantasy_scifi' &&
+                      [
+                        { label: '🌆 Cyberpunk Neon Hacker', query: 'Female cyberpunk hacker with glowing holographic neural interface visor in rainy Tokyo neon alley', style: 'Cyberpunk Neon Synthwave' },
+                        { label: '🧝 High Elf Sorceress', query: 'High Elf Sorceress in silver embroidered gown casting ethereal glowing arcane starlight spells in enchanted forest', style: 'Photorealistic 8K Anamorphic IMAX' },
+                        { label: '⚙️ Steampunk Airship Captain', query: 'Steampunk airship captain in brass goggles and leather coat steering colossal clockwork flying zeppelin', style: 'Photorealistic 8K Anamorphic IMAX' },
+                        { label: '🦇 Vampire Lord Nocturne', query: 'Vampire Lord in ornate velvet gothic cape standing on gothic cathedral spire under full blood moon', style: 'Occult Dark Fantasy & Demonology' },
+                        { label: '🚀 Space Marine Armor', query: 'Heavy armored space marine holding glowing plasma cannon standing on alien crater planet overlooking dual moons', style: 'Unreal Engine 5 Octane 3D' },
+                      ].map((item) => (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() => {
+                            setPrompt(item.query);
+                            setStyle(item.style);
+                            onNotify('Fantasy Archetype Selected', `Loaded "${item.label}". Click "Render Image" or "⚡ Enhance & Render Maal"!`, 'success');
+                          }}
+                          className="px-2.5 py-1 rounded-xl bg-teal-950/40 hover:bg-teal-900/60 border border-teal-600/40 hover:border-teal-400 text-teal-200 hover:text-white shrink-0 font-medium transition-all hover:scale-105 active:scale-95 shadow-sm"
                         >
                           {item.label}
                         </button>

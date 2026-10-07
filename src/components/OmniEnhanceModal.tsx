@@ -14,16 +14,18 @@ import {
   Layers,
   ArrowRight,
   Play,
-  Pause,
   Download,
-  RefreshCw,
   Wand2,
-  Eye,
   Sliders,
   Volume2,
   Square,
-  FileSpreadsheet,
   Zap,
+  Cpu,
+  Globe2,
+  Compass,
+  CheckCircle2,
+  Activity,
+  Terminal,
 } from 'lucide-react';
 import * as THREE from 'three';
 import {
@@ -32,6 +34,8 @@ import {
   triggerVideoGen,
   generateAiDocument,
   generateAiSongLyrics,
+  orchestrateMasterAi,
+  MasterAiResponse,
 } from '../lib/api.ts';
 import { ActiveTab, UserProfile } from '../types.ts';
 import { safeDownloadMedia } from '../lib/downloadHelper.ts';
@@ -59,6 +63,15 @@ export type ModalModality =
   | 'film'
   | 'all';
 
+export type AiPersonalityMode =
+  | 'omni_fusion'
+  | 'visual_artist'
+  | 'cinema_director'
+  | 'storyteller'
+  | 'voice_audio'
+  | 'game_3d'
+  | 'office_strategy';
+
 interface ModalityOption {
   id: ModalModality;
   label: string;
@@ -74,209 +87,112 @@ interface ModalityOption {
 const MODALITY_OPTIONS: ModalityOption[] = [
   {
     id: 'auto',
-    label: '✨ Auto-Detect (Context-Aware LLM)',
-    shortLabel: '✨ Auto-Detect',
-    icon: '✨',
-    badge: '🧠 Smart Modality Classifier',
+    label: '⚡ Master Multi-AI Fusion (Auto-Orchestrate All)',
+    shortLabel: '⚡ Omni-Fusion',
+    icon: '⚡',
+    badge: '🧠 Merged Gemini + Multi-AI Engine',
     targetStudio: 'image_studio',
-    placeholder: 'Type anything in Hindi, Hinglish, or English — the AI will classify and enhance for the right tool automatically...',
+    placeholder: 'Type anything (e.g. Motu Patlu in futuristic Mumbai, Iron Man vs Thanos in 8K, Anime music video, Shiva 3D)...',
     quickExamples: [
-      'Ek energetic Punjabi rap track with 130 bpm heavy 808 bass and synth lead',
-      'Cyberpunk samurai warrior in rainy neo-Tokyo neon street in 8K',
-      'Drone flying through futuristic megacity clouds at sunset in 60fps',
-      'Sci-fi cyborg helmet with glowing visor with quad mesh and rigging in 3D',
-      'Business proposal for AI creative studio with 5-year financial projection',
+      'Motu Patlu futuristic 3D comedy adventure in Furfuri Nagar 2050',
+      'Spider-Man swinging through Cyberpunk Neo Tokyo in rainy 8K',
+      'Ancient Lord Shiva Mahadev meditating on Mount Kailash with celestial aura',
+      'Goku powering up Ultra Instinct against Jiren with electric volumetric aura',
+      'High-energy Bollywood EDM Punjabi rap track with 130 bpm heavy 808 bass',
     ],
-    description: 'Automatically classifies your input into Image, Video, Music, 3D, Docs, or Voice using Context-Aware Chain-of-Thought reasoning.',
+    description: 'Automatically parses your prompt, detects world characters/mythology, and generates synchronized Image, Video, Dialogue, Audio & 3D instructions.',
   },
   {
     id: 'image',
-    label: '🖼️ Image (Text to 8K)',
+    label: '🖼️ 8K Photoreal Visual Studio',
     shortLabel: 'Image 8K',
     icon: '🖼️',
-    badge: 'Text → 8K Image',
+    badge: 'Text → 8K Photoreal Visual',
     targetStudio: 'image_studio',
-    placeholder: 'e.g. ek futuristic neon robot baarish me, ya majestic golden temple at sunrise...',
+    placeholder: 'e.g. Motu Patlu, Batman, Lord Shiva, Naruto, Lamborghini, Cyberpunk City...',
     quickExamples: [
-      'Cyberpunk samurai warrior in rainy neo-Tokyo neon street',
-      'Ancient majestic Shiva meditating in Himalayan snow at sunrise',
-      'Ultra-luxury futuristic electric hypercar concept on coastal road',
+      'Batman standing on Gotham skyscraper gargoyle in pouring rain, cinematic 8K',
+      'Lord Shiva meditating in Himalayan snow with glowing third eye and crescent moon',
+      'Motu Patlu enjoying hot samosas in Furfuri Nagar market, Pixar 3D animated style',
     ],
-    description: 'Generates 8K photorealistic prompts with volumetric lighting, 35mm lenses, and surface textures.',
+    description: 'Synthesizes 8K photorealistic prompts with 35mm f/1.4 lenses, volumetric rim lighting, and Unreal Engine 5 details.',
   },
   {
     id: 'video',
-    label: '🎬 Video (Text to Motion)',
-    shortLabel: 'Text → Video',
+    label: '🎬 60fps Cinema & Video Suite',
+    shortLabel: 'Video 60fps',
     icon: '🎬',
-    badge: 'Text → 60fps Video',
+    badge: 'Text → 60fps Cinema Motion',
     targetStudio: 'video_audio',
-    placeholder: 'e.g. space rocket launching into clouds with smoke and fire in slow motion...',
+    placeholder: 'e.g. FPV drone flying through mountain canyon at sunset at 60fps...',
     quickExamples: [
-      'Epic space shuttle orbital launch penetrating dense storm clouds',
-      'High-speed sports car drifting around hairpin mountain bend at night',
-      'Ancient dragon swooping over a medieval castle fortress',
+      'Iron Man suit up sequence in holographic Tony Stark lab with particle sparks',
+      'Anime ninja combat sword clash with slow-motion dynamic camera tracking',
+      'Hypercar drifting around tight mountain bend with tire smoke simulation',
     ],
-    description: 'Generates cinematic motion prompts with camera tracking, dolly zooms, and 60fps physics.',
-  },
-  {
-    id: 'image_to_video',
-    label: '🖼️+🎬 Image + Video (Animate Still)',
-    shortLabel: 'Image → Video',
-    icon: '🎞️',
-    badge: 'Still Image → Motion Video',
-    targetStudio: 'video_audio',
-    placeholder: 'e.g. is tasveer me hawa se kapde aur baal hilte hue dikhao, camera aage badhe...',
-    quickExamples: [
-      'Animate portrait with natural eye blinks, hair blowing in sea breeze, and camera slow dolly in',
-      'Landscape painting coming alive with flowing river, rustling trees, and drifting clouds',
-      'Cyber city still photo bursting into life with flying hovercars and flickering neon reflections',
-    ],
-    description: 'Turns still pictures into flowing video clips with parallax depth and fluid physics.',
-  },
-  {
-    id: 'image_to_image',
-    label: '🖼️+🖼️ Image + Image (Style Transfer & Fusion)',
-    shortLabel: 'Image + Image',
-    icon: '🎨',
-    badge: 'Dual Image Fusion',
-    targetStudio: 'image_studio',
-    placeholder: 'e.g. meri photo ko anime cyberpunk art style me convert karo bina chehra badle...',
-    quickExamples: [
-      'Blend photo facial geometry with Makoto Shinkai anime aesthetic and golden hour sunset',
-      'Transfer Van Gogh Starry Night oil painting texture onto a modern city skyline',
-      'Harmonize product photo with luxury velvet background and studio ring lighting',
-    ],
-    description: 'Fuses features from multiple images or applies artistic style transfers with geometric fidelity.',
-  },
-  {
-    id: 'video_to_image',
-    label: '🎬+🖼️ Video + Image (Frame Restyle & 8K Still)',
-    shortLabel: 'Video → Image',
-    icon: '📸',
-    badge: 'Video Frame → 8K Still',
-    targetStudio: 'image_studio',
-    placeholder: 'e.g. video ke sabse action wale scene ko 8K movie poster me badlo...',
-    quickExamples: [
-      'Isolate peak action stunt frame, deblur motion, and remaster as 8K cinematic IMAX poster',
-      'Capture car drift apex moment with volumetric smoke and sharp tire rim reflections',
-      'Freeze character dramatic expression with high dynamic range chiaroscuro lighting',
-    ],
-    description: 'Extracts key frames from video and remasters them into crystal-sharp 8K poster stills.',
-  },
-  {
-    id: 'video_to_video',
-    label: '🎬+🎬 Video + Video (Morph & Continuity)',
-    shortLabel: 'Video + Video',
-    icon: '📽️',
-    badge: 'Multi-Clip Sequence',
-    targetStudio: 'video_audio',
-    placeholder: 'e.g. do alag video clips ko smooth morph transition aur same color grading me jodo...',
-    quickExamples: [
-      'Match camera momentum between two clips with seamless kinetic whip-pan transition',
-      'Day to night temporal morph preserving actor position while city lights illuminate',
-      'Action combat choreography sequence with unified teal-orange Hollywood LUT',
-    ],
-    description: 'Creates seamless continuity, color LUT matching, and morph transitions between multiple video clips.',
-  },
-  {
-    id: 'music',
-    label: '🎵 Music (Beats, Song & Audio)',
-    shortLabel: 'Music & Beats',
-    icon: '🎵',
-    badge: 'AI Audio & Studio Beat',
-    targetStudio: 'song_studio',
-    placeholder: 'e.g. lofi chill hiphop beat with rain sounds, ya high-energy Punjabi rap track...',
-    quickExamples: [
-      'Chillhop Lo-Fi beat at 80 BPM with dusty rhodes piano, vinyl crackle, and warm bassline',
-      'High-energy Bollywood electronic dance drop at 130 BPM with Punjabi dhol and synths',
-      'Cinematic orchestral trailer music at 110 BPM with Hans Zimmer style taiko drums and brass swell',
-    ],
-    description: 'Designs professional studio music prompts with BPM tempo, musical key, instruments, and mastering.',
-  },
-  {
-    id: 'document',
-    label: '📄 Document (Office, Report & PPT)',
-    shortLabel: 'Docs & PPT',
-    icon: '📄',
-    badge: 'Office Document Suite',
-    targetStudio: 'office_suite',
-    placeholder: 'e.g. nayi tech company ka business proposal, ya AI growth par presentation slides...',
-    quickExamples: [
-      'Complete Business Proposal for AI Creative Studio including executive summary and 5-year ROI',
-      'Investor Pitch Deck outline (10 slides) covering Problem, AI Solution, Market Size, and Financials',
-      'Mutual Non-Disclosure Agreement (NDA) and IP Assignment contract for freelance developers',
-    ],
-    description: 'Generates structured executive documents, legal contracts, research outlines, and presentation decks.',
-  },
-  {
-    id: '3d',
-    label: '🕹️ 3D WebGL (Mesh & Rigging)',
-    shortLabel: '3D WebGL',
-    icon: '🕹️',
-    badge: '3D Mesh & Rigging',
-    targetStudio: '3d_engine',
-    placeholder: 'e.g. sci-fi cyborg helmet with glowing visor, ya ancient temple stone column in 3D...',
-    quickExamples: [
-      'Hard-surface cyberpunk exoskeleton armor with quad topology, PBR materials, and 54-bone rig',
-      'Ancient carved marble lion sculpture with clean subdivision topology and normal maps',
-      'Low-poly futuristic planetary rover drone with articulated wheel joints and antenna',
-    ],
-    description: 'Architects 3D mesh synthesis prompts with quad topology, vertex counts, PBR textures, and rigging.',
-  },
-  {
-    id: 'voice',
-    label: '🎙️ Voice (Speech & Voiceover)',
-    shortLabel: 'Voice & Speech',
-    icon: '🎙️',
-    badge: 'Voiceover & Dialogue',
-    targetStudio: 'voice_converter',
-    placeholder: 'e.g. movie trailer jaisi deep heavy voice me dialogue narration...',
-    quickExamples: [
-      'Epic movie trailer voiceover in deep resonant baritone with dramatic pauses and breath markers',
-      'Warm and empathetic AI educator voice explaining quantum physics to high school students',
-      'Fast-paced energetic tech commercial narration with crisp vocal clarity and confident delivery',
-    ],
-    description: 'Shapes vocal timbre, emotional pacing, breath markers (<breath>), and broadcast acoustic specs.',
+    description: 'Generates cinematic camera trajectories (Dolly, Crane, 360 Orbit) and 60fps motion physics.',
   },
   {
     id: 'film',
-    label: '🎭 Film (Screenplay & Cinema)',
-    shortLabel: 'Film & Screenplay',
+    label: '🎭 Hollywood Screenplay & Dialogue',
+    shortLabel: 'Film & Dialogue',
     icon: '🎭',
-    badge: 'Hollywood Screenplay',
+    badge: 'Screenplay & Direction',
     targetStudio: 'film_studio',
-    placeholder: 'e.g. do detectives ka intense interrogation scene room me raat ke waqt...',
+    placeholder: 'e.g. intense confrontation dialogue between two master detectives...',
     quickExamples: [
-      'Intense cyber-thriller scene: Operative Aria uncovers mainframe conspiracy under plasma blade fire',
-      'Emotional reunion on rainy railway platform: Two estranged friends confront their past',
-      'Post-apocalyptic desert convoy ambush: High-octane action with practical stunts and anamorphic lensing',
+      'Interrogation room standoff: Detective confronts undercover kingpin',
+      'Epic battle speech before charging into final alien invasion stronghold',
+      'Emotional farewell on misty train platform in Hindi and English mix',
     ],
-    description: 'Formats Hollywood industry screenplays with scene sluglines (INT/EXT), action, and dialogue.',
+    description: 'Formats industry-standard screenplays with sluglines, character emotional beats, and bilingual dialogue.',
   },
   {
-    id: 'all',
-    label: '🌟 Universal All-in-One (Omni Suite)',
-    shortLabel: 'Omni All',
-    icon: '🌟',
-    badge: 'Full Multi-Modal Suite',
-    targetStudio: 'image_studio',
-    placeholder: 'e.g. ek sci-fi film ka poora concept jisme image, video, 3D character aur background music sab ho...',
+    id: 'music',
+    label: '🎵 Music Composition & Beats',
+    shortLabel: 'Music & Beats',
+    icon: '🎵',
+    badge: 'Lyrics & 808 Arrangement',
+    targetStudio: 'song_studio',
+    placeholder: 'e.g. Punjabi drill track with heavy bass, or Bollywood romantic melody...',
     quickExamples: [
-      'Complete Sci-Fi Cyberpunk Universe: 8K concept art, 60fps trailer, 3D hero mech, and 124 BPM synth score',
-      'Ancient Indian Mythology Fantasy Epic: Visuals, battle sequence, 3D temple, and traditional orchestral soundtrack',
-      'Next-Gen Electric Flying Car Product Launch: 8K hero renders, video showcase, and executive investor pitch',
+      'High-energy gym workout anthem with heavy 808 drop and aggressive brass',
+      'Soothing acoustic lo-fi indie love song with rain sounds and warm Rhodes piano',
+      'Epic orchestral battle theme with thunderous taiko drums and choir chanting',
     ],
-    description: 'Synthesizes a master creative direction synchronized across visual, motion, 3D, and audio tools.',
+    description: 'Composes radio-ready lyrics, musical key, BPM, and multi-instrument arrangement stems.',
+  },
+  {
+    id: '3d',
+    label: '🕹️ 3D WebGL Mesh & Auto-Rigging',
+    shortLabel: '3D & Rigging',
+    icon: '🕹️',
+    badge: '3D Geometry & Bones',
+    targetStudio: 'holo_sculpt_3d',
+    placeholder: 'e.g. futuristic mecha robot with articulated joints and glowing visor...',
+    quickExamples: [
+      'Cyberpunk biped humanoid armor with 54-bone skeletal rig and PBR metallic textures',
+      'Ancient carved stone dragon statue with displacement maps and high-poly topology',
+      'Sci-fi hovercraft vehicle with glowing engine thrusters and quad mesh topology',
+    ],
+    description: 'Creates 3D mesh topology specifications, bone counts, and Unreal Engine 5 PBR materials.',
+  },
+  {
+    id: 'document',
+    label: '📄 Executive Office Docs & Strategy',
+    shortLabel: 'Office Docs',
+    icon: '📄',
+    badge: 'Office Document Suite',
+    targetStudio: 'office_suite',
+    placeholder: 'e.g. business proposal for AI creative studio with 5-year financial plan...',
+    quickExamples: [
+      'Comprehensive Creative Studio Business Strategy and 5-Year Scaling Roadmap',
+      '10-Slide Investor Pitch Deck for Multi-Modal AI Generator Platform',
+      'Mutual Non-Disclosure Agreement (NDA) and Intellectual Property Agreement',
+    ],
+    description: 'Generates executive summaries, strategy roadmaps, slide deck outlines, and financial models.',
   },
 ];
-
-interface ChainOfThoughtStep {
-  step: number;
-  title: string;
-  icon: string;
-  thought: string;
-}
 
 export const OmniEnhanceModal: React.FC<OmniEnhanceModalProps> = ({
   isOpen,
@@ -287,55 +203,35 @@ export const OmniEnhanceModal: React.FC<OmniEnhanceModalProps> = ({
 }) => {
   const [selectedModality, setSelectedModality] = useState<ModalModality>('auto');
   const [inputPrompt, setInputPrompt] = useState('');
-  const [enhancedResult, setEnhancedResult] = useState<{
-    enhancedPrompt: string;
-    explanation?: string;
-    tags?: string[];
-    suggestedSettings?: Record<string, any>;
-    targetStudio?: string;
-    detectedModality?: string;
-    confidenceScore?: number;
-    chainOfThought?: ChainOfThoughtStep[];
-  } | null>(null);
-  const [showCoT, setShowCoT] = useState(true);
-  const [isEnhancing, setIsEnhancing] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [copiedDoc, setCopiedDoc] = useState(false);
+  const [aiMode, setAiMode] = useState<AiPersonalityMode>('omni_fusion');
+  const [languageTone, setLanguageTone] = useState<'auto' | 'hinglish' | 'hindi' | 'english' | 'multilingual'>('auto');
+  const [creativityLevel, setCreativityLevel] = useState<number>(0.85);
+  const [autoExecuteOnEnhance, setAutoExecuteOnEnhance] = useState<boolean>(true);
 
-  // Multi-modal generation states
-  const [generatedPreviewUrl, setGeneratedPreviewUrl] = useState<string | null>(null);
-  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
-  const [secondaryImageUrl, setSecondaryImageUrl] = useState<string | null>(null);
-  const [generatedDoc, setGeneratedDoc] = useState<{ title: string; content: string; sections: string[] } | null>(null);
-  const [generatedSong, setGeneratedSong] = useState<{
-    title: string;
-    lyrics: string;
-    genre: string;
-    tempoBpm: number;
-    musicalKey: string;
-    arrangementNotes: string;
-  } | null>(null);
-  const [is3DActive, setIs3DActive] = useState(false);
-  const [isWireframe3D, setIsWireframe3D] = useState(false);
+  // Master AI Orchestration State
+  const [masterResult, setMasterResult] = useState<MasterAiResponse | null>(null);
+  const [activeOutputTab, setActiveOutputTab] = useState<'synthesis' | 'image' | 'video' | 'script' | 'music' | '3d' | 'strategy'>('synthesis');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Generated Media Previews
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
   const [isSynthesizingAudio, setIsSynthesizingAudio] = useState(false);
   const [isSpeakingVoice, setIsSpeakingVoice] = useState(false);
-  const [activeAllTab, setActiveAllTab] = useState<'image' | 'video' | 'music' | 'document' | '3d'>('image');
-  const [isGeneratingPreview, setIsGeneratingPreview] = useState(false);
+  const [is3DActive, setIs3DActive] = useState(false);
+  const [isWireframe3D, setIsWireframe3D] = useState(false);
 
-  // Subscription check: non-subscribed users
-  const isNonSubscribed = !user || user.vipTier === 'free' || user.vipTier === undefined;
-
-  // Audio & 3D refs
+  // 3D Canvas Refs
   const audioCtxRef = useRef<AudioContext | null>(null);
   const synthTimerRef = useRef<any>(null);
   const threeCanvasRef = useRef<HTMLDivElement>(null);
   const threeRendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const threeAnimIdRef = useRef<number | null>(null);
   const meshRef = useRef<THREE.Mesh | null>(null);
-  const wireMeshRef = useRef<THREE.Mesh | null>(null);
 
-  // Stop Audio Synth
-  const stopSynthAudio = () => {
+  // Stop Audio
+  const stopAudio = () => {
     if (synthTimerRef.current) {
       clearInterval(synthTimerRef.current);
       synthTimerRef.current = null;
@@ -349,7 +245,7 @@ export const OmniEnhanceModal: React.FC<OmniEnhanceModalProps> = ({
 
   // Play Real Web Audio Synth Melodic Arpeggio
   const playSynthAudio = (bpm = 124) => {
-    stopSynthAudio();
+    stopAudio();
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       const ctx = new AudioCtx();
@@ -392,7 +288,7 @@ export const OmniEnhanceModal: React.FC<OmniEnhanceModalProps> = ({
     }
   };
 
-  // Voice Speech Synthesis
+  // Voice narration speech
   const handleToggleVoice = (text: string) => {
     if ('speechSynthesis' in window) {
       if (isSpeakingVoice) {
@@ -400,7 +296,7 @@ export const OmniEnhanceModal: React.FC<OmniEnhanceModalProps> = ({
         setIsSpeakingVoice(false);
       } else {
         window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(text.slice(0, 300));
+        const u = new SpeechSynthesisUtterance(text.slice(0, 350));
         u.rate = 1.0;
         u.pitch = 1.0;
         u.onend = () => setIsSpeakingVoice(false);
@@ -409,32 +305,22 @@ export const OmniEnhanceModal: React.FC<OmniEnhanceModalProps> = ({
         setIsSpeakingVoice(true);
       }
     } else {
-      onNotify('Notice', 'Speech synthesis is not supported on this browser.', 'info');
+      onNotify('Notice', 'Speech synthesis is not supported in this browser.', 'info');
     }
   };
 
-  // Clean up audio & voice on unmount
-  useEffect(() => {
-    return () => {
-      stopSynthAudio();
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
-    };
-  }, []);
-
-  // 3D Canvas initialization when 3D is active
+  // 3D Canvas initialization
   useEffect(() => {
     if (!is3DActive || !threeCanvasRef.current) return;
     const container = threeCanvasRef.current;
     const width = container.clientWidth || 400;
-    const height = 240;
+    const height = 220;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x050814);
+    scene.background = new THREE.Color(0x040714);
 
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
-    camera.position.set(0, 1.5, 4);
+    camera.position.set(0, 1.5, 3.8);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(width, height);
@@ -443,32 +329,22 @@ export const OmniEnhanceModal: React.FC<OmniEnhanceModalProps> = ({
     container.appendChild(renderer.domElement);
     threeRendererRef.current = renderer;
 
-    // Grid
     const grid = new THREE.GridHelper(8, 16, 0x06b6d4, 0x1e293b);
     grid.position.y = -0.8;
     scene.add(grid);
 
-    // Cyber Mesh (Torus Knot)
-    const geometry = new THREE.TorusKnotGeometry(0.8, 0.25, 100, 16);
+    const geometry = new THREE.TorusKnotGeometry(0.7, 0.22, 100, 16);
     const material = new THREE.MeshStandardMaterial({
       color: 0x06b6d4,
       wireframe: isWireframe3D,
-      roughness: 0.2,
-      metalness: 0.8,
+      roughness: 0.25,
+      metalness: 0.85,
     });
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.y = 0.3;
+    mesh.position.y = 0.2;
     scene.add(mesh);
     meshRef.current = mesh;
 
-    // Wireframe overlay
-    const wireMat = new THREE.MeshBasicMaterial({ color: 0x818cf8, wireframe: true, transparent: true, opacity: 0.3 });
-    const wireMesh = new THREE.Mesh(geometry, wireMat);
-    wireMesh.position.y = 0.3;
-    scene.add(wireMesh);
-    wireMeshRef.current = wireMesh;
-
-    // Lights
     const ambient = new THREE.AmbientLight(0xffffff, 0.7);
     scene.add(ambient);
     const dirLight = new THREE.DirectionalLight(0x38bdf8, 2);
@@ -489,9 +365,7 @@ export const OmniEnhanceModal: React.FC<OmniEnhanceModalProps> = ({
       const dx = e.clientX - prevX;
       const dy = e.clientY - prevY;
       mesh.rotation.y += dx * 0.01;
-      wireMesh.rotation.y += dx * 0.01;
       mesh.rotation.x += dy * 0.01;
-      wireMesh.rotation.x += dy * 0.01;
       prevX = e.clientX;
       prevY = e.clientY;
     };
@@ -505,7 +379,6 @@ export const OmniEnhanceModal: React.FC<OmniEnhanceModalProps> = ({
       threeAnimIdRef.current = requestAnimationFrame(animate);
       if (!isDragging) {
         mesh.rotation.y += 0.01;
-        wireMesh.rotation.y += 0.01;
       }
       renderer.render(scene, camera);
     };
@@ -521,385 +394,253 @@ export const OmniEnhanceModal: React.FC<OmniEnhanceModalProps> = ({
     };
   }, [is3DActive, isWireframe3D]);
 
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      stopAudio();
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
   if (!isOpen) return null;
 
   const currentModalityConfig =
     MODALITY_OPTIONS.find((m) => m.id === selectedModality) || MODALITY_OPTIONS[0];
 
-  const handleEnhance = async () => {
-    if (!inputPrompt.trim()) {
-      onNotify('Notice', 'Please type a rough prompt or idea first!', 'warning');
+  // Master AI Orchestrator Execution
+  const handleOrchestrateMasterAi = async (overridePrompt?: string) => {
+    const promptToUse = (overridePrompt || inputPrompt).trim();
+    if (!promptToUse) {
+      onNotify('Notice', 'Please type a rough prompt, character name, or creative idea first!', 'warning');
       return;
     }
 
     try {
-      setIsEnhancing(true);
-      // Reset previews
-      setGeneratedPreviewUrl(null);
-      setGeneratedVideoUrl(null);
-      setSecondaryImageUrl(null);
-      setGeneratedDoc(null);
-      setGeneratedSong(null);
+      setIsProcessing(true);
+      stopAudio();
+      setPreviewImageUrl(null);
+      setPreviewVideoUrl(null);
       setIs3DActive(false);
-      stopSynthAudio();
 
-      const res = await enhancePrompt(inputPrompt, selectedModality);
-      const detMod = (res.detectedModality || res.modality || (selectedModality === 'auto' ? 'image' : selectedModality)) as ModalModality;
-      setEnhancedResult({
-        enhancedPrompt: res.enhancedPrompt || res.enhanced,
-        explanation: res.explanation,
-        tags: res.tags,
-        suggestedSettings: res.suggestedSettings,
-        targetStudio: res.targetStudio,
-        detectedModality: detMod,
-        confidenceScore: typeof res.confidenceScore === 'number' ? res.confidenceScore : 0.98,
-        chainOfThought: res.chainOfThought,
+      const res = await orchestrateMasterAi({
+        prompt: promptToUse,
+        aiMode,
+        language: languageTone,
+        creativityLevel,
+        targetStudio: currentModalityConfig.targetStudio,
+        autoExecute: autoExecuteOnEnhance,
       });
 
-      const resolvedConfig = MODALITY_OPTIONS.find((m) => m.id === detMod) || currentModalityConfig;
+      setMasterResult(res);
+
+      // Auto-trigger instant visual rendering
+      if (autoExecuteOnEnhance) {
+        triggerImageGen({
+          prompt: res.masterEnhancedPrompt,
+          style: res.detectedUniverse || 'Cinematic 8K',
+          resolution: '8K',
+          aspectRatio: (res.cinematicDirectives?.aspectRatio as any) || '16:9',
+        }).then((imgRes) => {
+          if (imgRes?.assetUrl) {
+            setPreviewImageUrl(imgRes.assetUrl);
+          }
+        }).catch(console.warn);
+      }
+
       onNotify(
-        'AI Context-Aware Pipeline Ready!',
-        `Categorized as ${resolvedConfig.shortLabel} (${Math.round((res.confidenceScore ?? 0.98) * 100)}% Confidence) with Chain-of-Thought reasoning.`,
+        '⚡ Omni-AI Master Brain Synchronized!',
+        `Merged Gemini + Neural Engines: Classified for ${res.recommendedStudio} with 8K visual, video, audio & 3D specs!`,
         'success'
       );
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Enhance failed';
+      const msg = err instanceof Error ? err.message : 'Master AI Orchestration failed';
       onNotify('Notice', msg, 'error');
     } finally {
-      setIsEnhancing(false);
+      setIsProcessing(false);
     }
   };
 
-  const handleEnhanceAndAutoGenerate = async () => {
-    if (!inputPrompt.trim()) {
-      onNotify('Notice', 'Please type a rough prompt or idea first!', 'warning');
-      return;
-    }
-    try {
-      setIsEnhancing(true);
-      setGeneratedPreviewUrl(null);
-      setGeneratedVideoUrl(null);
-      setSecondaryImageUrl(null);
-      setGeneratedDoc(null);
-      setGeneratedSong(null);
-      setIs3DActive(false);
-      stopSynthAudio();
-
-      const res = await enhancePrompt(inputPrompt, selectedModality);
-      const detMod = (res.detectedModality || res.modality || (selectedModality === 'auto' ? 'image' : selectedModality)) as ModalModality;
-      const enhancedData = {
-        enhancedPrompt: res.enhancedPrompt || res.enhanced,
-        explanation: res.explanation,
-        tags: res.tags,
-        suggestedSettings: res.suggestedSettings,
-        targetStudio: res.targetStudio,
-        detectedModality: detMod,
-        confidenceScore: typeof res.confidenceScore === 'number' ? res.confidenceScore : 0.98,
-        chainOfThought: res.chainOfThought,
-      };
-      setEnhancedResult(enhancedData);
-      setIsEnhancing(false);
-
-      // Now auto-generate the media!
-      setIsGeneratingPreview(true);
-      const targetMode = (selectedModality === 'auto' && detMod) ? detMod : selectedModality;
-      const promptToGen = enhancedData.enhancedPrompt;
-
-      if (targetMode === 'image' || targetMode === 'auto') {
-        const imgRes = await triggerImageGen({
-          prompt: promptToGen,
-          style: 'Cinematic 8K',
-          resolution: '8K',
-          aspectRatio: '16:9',
-        });
-        if (imgRes?.assetUrl) {
-          setGeneratedPreviewUrl(imgRes.assetUrl);
-          onNotify('8K AI Image Ready!', 'Pristine 8K resolution asset rendered from enhanced prompt.', 'success');
-        }
-      } else {
-        // Trigger default preview
-        onNotify('Rendering Media', `Synthesizing ${targetMode} output with AI...`, 'info');
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '1-Click generation error';
-      onNotify('Notice', msg, 'error');
-    } finally {
-      setIsEnhancing(false);
-      setIsGeneratingPreview(false);
-    }
+  const handleCopyText = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
+    onNotify('Copied!', 'Content copied to clipboard.', 'success');
   };
 
-  const handleCopy = () => {
-    if (!enhancedResult) return;
-    navigator.clipboard.writeText(enhancedResult.enhancedPrompt);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-    onNotify('Copied to Clipboard!', 'Enhanced master prompt is ready to paste anywhere.', 'success');
-  };
-
-  const handleOpenInStudio = () => {
-    if (!enhancedResult) return;
-    const effectiveMod = (selectedModality === 'auto' && enhancedResult.detectedModality)
-      ? (enhancedResult.detectedModality as ModalModality)
-      : selectedModality;
-    const resolvedConfig = MODALITY_OPTIONS.find((m) => m.id === effectiveMod) || currentModalityConfig;
-    const target = (enhancedResult.targetStudio || resolvedConfig.targetStudio) as ActiveTab;
-    onNavigateToStudio(target, enhancedResult.enhancedPrompt);
-    onNotify('Opening Studio', `Preloaded enhanced prompt into ${resolvedConfig.shortLabel} Studio!`, 'info');
+  const handleLaunchInStudio = (targetStudio: string, prefillPrompt: string) => {
+    onNavigateToStudio(targetStudio as ActiveTab, prefillPrompt);
+    onNotify('Studio Initialized', `Loaded Master AI prompt into ${targetStudio} Studio!`, 'info');
     onClose();
   };
 
-  // Full multi-modal media generation across all tools
-  const handleGenerateInstantPreview = async () => {
-    if (!enhancedResult) return;
-    try {
-      setIsGeneratingPreview(true);
-      const prompt = enhancedResult.enhancedPrompt;
-      const targetMode = (selectedModality === 'auto' && enhancedResult.detectedModality)
-        ? (enhancedResult.detectedModality as ModalModality)
-        : selectedModality;
-
-      // Reset previous media
-      setGeneratedPreviewUrl(null);
-      setGeneratedVideoUrl(null);
-      setSecondaryImageUrl(null);
-      setGeneratedDoc(null);
-      setGeneratedSong(null);
-      setIs3DActive(false);
-      stopSynthAudio();
-
-      if (targetMode === 'image') {
-        const res = await triggerImageGen({
-          prompt,
-          style: 'Cinematic 8K',
-          resolution: '8K',
-          aspectRatio: '16:9',
-        });
-        if (res?.assetUrl) {
-          setGeneratedPreviewUrl(res.assetUrl);
-          onNotify('8K AI Image Ready!', 'Pristine 8K resolution asset rendered from enhanced prompt.', 'success');
-        }
-      } else if (targetMode === 'video' || targetMode === 'video_to_video') {
-        const vid = await triggerVideoGen({
-          prompt,
-          cinematicStyle: 'Hyper-lapse 60fps',
-          fps: 60,
-          resolution: '8K',
-        });
-        setGeneratedVideoUrl(vid.videoUrl || 'https://media.w3.org/2010/05/sintel/trailer.mp4');
-        onNotify('60fps AI Video Ready!', 'Motion video rendered with dynamic cinematic physics.', 'success');
-      } else if (targetMode === 'image_to_video') {
-        const [img, vid] = await Promise.all([
-          triggerImageGen({ prompt, style: 'Cinematic Keyframe', resolution: '8K', aspectRatio: '16:9' }),
-          triggerVideoGen({ prompt, cinematicStyle: 'Parallax Motion', fps: 60, resolution: '8K' }),
-        ]);
-        if (img?.assetUrl) setGeneratedPreviewUrl(img.assetUrl);
-        setGeneratedVideoUrl(vid.videoUrl || 'https://media.w3.org/2010/05/sintel/trailer.mp4');
-        onNotify('Image + Video Generated!', 'Source keyframe and parallax motion video synchronized.', 'success');
-      } else if (targetMode === 'image_to_image') {
-        const [img1, img2] = await Promise.all([
-          triggerImageGen({ prompt: `${inputPrompt}, base subject`, style: 'Photorealistic Raw', resolution: '8K', aspectRatio: '16:9' }),
-          triggerImageGen({ prompt, style: 'Cyberpunk Masterpiece', resolution: '8K', aspectRatio: '16:9' }),
-        ]);
-        if (img1?.assetUrl) setSecondaryImageUrl(img1.assetUrl);
-        if (img2?.assetUrl) setGeneratedPreviewUrl(img2.assetUrl);
-        onNotify('Image + Image Fusion Ready!', 'Base geometry and styled neural fusion rendered.', 'success');
-      } else if (targetMode === 'video_to_image') {
-        const [vid, img] = await Promise.all([
-          triggerVideoGen({ prompt, cinematicStyle: 'Action Cinematic', fps: 60, resolution: '8K' }),
-          triggerImageGen({ prompt: `8K IMAX Action Movie Still, deblurred, ${prompt}`, style: 'IMAX Cinema', resolution: '8K', aspectRatio: '16:9' }),
-        ]);
-        setGeneratedVideoUrl(vid.videoUrl || 'https://media.w3.org/2010/05/sintel/trailer.mp4');
-        if (img?.assetUrl) setGeneratedPreviewUrl(img.assetUrl);
-        onNotify('Video + 8K Still Ready!', 'Extracted and remastered 8K still from video sequence.', 'success');
-      } else if (targetMode === 'music') {
-        const song = await generateAiSongLyrics({ topic: prompt, genre: 'Bollywood Pop / Synthwave', tempoBpm: 124 });
-        setGeneratedSong(song);
-        playSynthAudio(song.tempoBpm || 124);
-        onNotify('Music Track & Lyrics Composed!', `Synthesizing ${song.tempoBpm} BPM audio with complete song arrangement.`, 'success');
-      } else if (targetMode === 'document') {
-        const doc = await generateAiDocument({ topic: prompt, format: 'Executive Report' });
-        setGeneratedDoc(doc);
-        onNotify('Executive Document Generated!', 'Complete multi-section document created.', 'success');
-      } else if (targetMode === '3d') {
-        setIs3DActive(true);
-        onNotify('3D WebGL Mesh Ready!', 'Interactive 3D viewport loaded with calibrated quad topology.', 'success');
-      } else if (targetMode === 'voice') {
-        handleToggleVoice(prompt);
-        onNotify('Voiceover Synthesis Active!', 'Playing voiceover speech preview.', 'success');
-      } else if (targetMode === 'film') {
-        const doc = await generateAiDocument({ topic: `Hollywood Screenplay Scene: ${prompt}`, format: 'Hollywood Screenplay' });
-        setGeneratedDoc({ title: 'HOLLYWOOD SCREENPLAY SCENE', content: doc.content, sections: ['Logline', 'Scene 1', 'Scene 2'] });
-        onNotify('Screenplay Generated!', 'Hollywood industry formatted scene script created.', 'success');
-      } else if (targetMode === 'all') {
-        const [img, vid, song, doc] = await Promise.all([
-          triggerImageGen({ prompt, style: 'Cinematic 8K', resolution: '8K', aspectRatio: '16:9' }),
-          triggerVideoGen({ prompt, cinematicStyle: 'Cinematic 60fps', fps: 60, resolution: '8K' }),
-          generateAiSongLyrics({ topic: prompt, tempoBpm: 124 }),
-          generateAiDocument({ topic: prompt, format: 'Executive Multi-Modal Brief' }),
-        ]);
-        if (img?.assetUrl) setGeneratedPreviewUrl(img.assetUrl);
-        setGeneratedVideoUrl(vid.videoUrl || 'https://media.w3.org/2010/05/sintel/trailer.mp4');
-        setGeneratedSong(song);
-        setGeneratedDoc(doc);
-        setIs3DActive(true);
-        onNotify('Omni Multi-Modal Suite Generated!', 'Image, Video, Music, Document, and 3D previews all ready!', 'success');
-      }
-    } catch (err) {
-      console.warn('Preview generation fallback:', err);
-      onNotify('Notice', 'Output prepared for studio export.', 'info');
-    } finally {
-      setIsGeneratingPreview(false);
-    }
-  };
-
-  const handleDownloadDoc = (format: 'txt' | 'doc') => {
-    if (!generatedDoc) return;
-    const blob = new Blob([generatedDoc.content], { type: format === 'doc' ? 'application/msword' : 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${generatedDoc.title.toLowerCase().replace(/[^a-z0-9]/g, '_')}.${format}`;
-    a.click();
-    URL.revokeObjectURL(url);
-    onNotify('Document Exported', `Saved as .${format} successfully!`, 'success');
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-xl animate-in fade-in duration-200">
-      <div className="relative w-full max-w-4xl max-h-[92vh] flex flex-col rounded-3xl bg-slate-950 border border-cyan-500/40 shadow-2xl shadow-cyan-950/60 overflow-hidden font-sans">
-        {/* Top Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-800/80 bg-gradient-to-r from-slate-900 via-indigo-950/60 to-slate-900 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-2xl animate-in fade-in duration-200">
+      <div className="relative w-full max-w-5xl max-h-[94vh] flex flex-col rounded-3xl bg-[#070b16] border border-cyan-500/40 shadow-2xl shadow-cyan-950/70 overflow-hidden font-sans">
+        
+        {/* Top Master AI Header */}
+        <div className="p-4 sm:p-5 border-b border-slate-800 bg-gradient-to-r from-slate-950 via-indigo-950/70 to-slate-950 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-cyan-950/50">
-              <Wand2 className="w-5 h-5 animate-pulse" />
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-400 via-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-xl shadow-cyan-950/60 ring-2 ring-cyan-400/40">
+              <Zap className="w-6 h-6 animate-pulse fill-current text-amber-300" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base sm:text-lg font-bold text-white font-['Syne']">
-                  Omni Enhance AI — यूनिवर्सल प्रॉम्प्ट बूस्टर
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-base sm:text-lg font-black text-white font-['Syne'] tracking-wide">
+                  iCALLOG Omni-AI Master Brain — All-in-One Merged AI
                 </h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-                  Gemini 3.8 Multi-Modal
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  Gemini 3.8 + Neural Consensus
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Type rough ideas in Hindi, Hinglish, or English — get master prompts for Image, Video, Music, 3D, Docs & more!
+                World ke sabhi AI tools (Gemini, Flux, Whisper Audio, 60fps Director, 3D Engine & Character Lore) ka merged super-AI jo aapke mutabiq chale!
               </p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors border border-slate-800"
+            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors border border-slate-800 cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Scrollable Content Body */}
+        {/* Scrollable Modal Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
-          {/* Non-Subscribed User Special Free Trial Session Card (sirf unke liye jinhone subscription nhi liya hai) */}
-          {isNonSubscribed ? (
-            <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-950/60 via-slate-900 to-indigo-950/60 border border-amber-500/50 shadow-xl space-y-2.5 animate-in fade-in">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-2.5 w-2.5 relative">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
-                  </span>
-                  <span className="text-xs font-bold text-amber-300 font-['Syne'] uppercase tracking-wider">
-                    ⚡ Free Trial AI Enhancement Session Active (निःशुल्क ट्रायल सत्र)
-                  </span>
+          
+          {/* Active Merged Multi-AI Cluster Status Bar */}
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/50 to-slate-900 border border-slate-800 shadow-inner">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-cyan-300 flex items-center gap-1.5">
+                <Cpu className="w-3.5 h-3.5 text-cyan-400" /> Active Merged AI Engines Cluster (सभी AI टूल्स एक साथ)
+              </span>
+              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
+                ● 100% Free & Zero-Stall Active
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-[10px] font-mono">
+              <div className="p-2 rounded-xl bg-slate-950/80 border border-cyan-500/30 flex items-center gap-1.5 text-slate-300">
+                <span className="text-cyan-400">🧠</span>
+                <div className="truncate">
+                  <div className="text-white font-bold">Gemini 3.8</div>
+                  <div className="text-[9px] text-slate-400">Deep Reasoning</div>
                 </div>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                  🆓 Non-Subscribed Plan
-                </span>
               </div>
-              <p className="text-xs text-amber-200/90 leading-relaxed">
-                Aapke paas active subscription nahi hai — Ye special trial session sirf non-subscribed users ke liye active hai. Isme Context-Aware LLM Pipeline aur Chain-of-Thought auto-categorization sabhi studio tools ke liye free me available hai!
-              </p>
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-amber-500/20 text-[11px]">
-                <div className="flex items-center gap-3 text-slate-300 font-mono">
-                  <span>🪙 Free Credits: <strong className="text-amber-400">{user?.tokenBalance ?? 50} Tokens</strong></span>
-                  <span>•</span>
-                  <span>🧠 CoT Auto-Pipeline: <strong className="text-emerald-400">Active</strong></span>
+              <div className="p-2 rounded-xl bg-slate-950/80 border border-purple-500/30 flex items-center gap-1.5 text-slate-300">
+                <span className="text-purple-400">🎨</span>
+                <div className="truncate">
+                  <div className="text-white font-bold">Flux 1.1</div>
+                  <div className="text-[9px] text-slate-400">8K Photoreal</div>
                 </div>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-950/80 border border-emerald-500/30 flex items-center gap-1.5 text-slate-300">
+                <span className="text-emerald-400">⚡</span>
+                <div className="truncate">
+                  <div className="text-white font-bold">Pollinations</div>
+                  <div className="text-[9px] text-slate-400">Zero-Stall Node</div>
+                </div>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-950/80 border border-amber-500/30 flex items-center gap-1.5 text-slate-300">
+                <span className="text-amber-400">🎬</span>
+                <div className="truncate">
+                  <div className="text-white font-bold">60fps Director</div>
+                  <div className="text-[9px] text-slate-400">Spatial Camera</div>
+                </div>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-950/80 border border-rose-500/30 flex items-center gap-1.5 text-slate-300">
+                <span className="text-rose-400">🎙️</span>
+                <div className="truncate">
+                  <div className="text-white font-bold">Audio Synth</div>
+                  <div className="text-[9px] text-slate-400">Voice & Beats</div>
+                </div>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-950/80 border border-indigo-500/30 flex items-center gap-1.5 text-slate-300">
+                <span className="text-indigo-400">🌍</span>
+                <div className="truncate">
+                  <div className="text-white font-bold">Lore Matrix</div>
+                  <div className="text-[9px] text-slate-400">All Characters</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* User Persona & Behavior Tuning Controls */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
+            {/* AI Persona Selector */}
+            <div>
+              <label className="text-[11px] font-bold text-slate-300 font-mono block mb-1">
+                AI Behavior Mode (AI का मिज़ाज):
+              </label>
+              <select
+                value={aiMode}
+                onChange={(e) => setAiMode(e.target.value as AiPersonalityMode)}
+                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-cyan-300 font-semibold focus:outline-none focus:border-cyan-500"
+              >
+                <option value="omni_fusion">⚡ Omni-Fusion Master (Auto-All)</option>
+                <option value="visual_artist">🎨 8K Visual Artist (Photoreal)</option>
+                <option value="cinema_director">🎬 Hollywood Cinema Director</option>
+                <option value="storyteller">✍️ Master Storyteller & Dialogue</option>
+                <option value="voice_audio">🎙️ Voice & Audio Music Producer</option>
+                <option value="game_3d">🕹️ 3D Game Sculptor & Rigging</option>
+                <option value="office_strategy">💼 Business & Strategy Executive</option>
+              </select>
+            </div>
+
+            {/* Language Tone */}
+            <div>
+              <label className="text-[11px] font-bold text-slate-300 font-mono block mb-1">
+                Language Tone (भाषा):
+              </label>
+              <select
+                value={languageTone}
+                onChange={(e) => setLanguageTone(e.target.value as any)}
+                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white font-semibold focus:outline-none focus:border-cyan-500"
+              >
+                <option value="auto">🌐 Auto-Detect (Hindi / Hinglish / English)</option>
+                <option value="hinglish">🇮🇳 Hinglish (Desi + Modern Mix)</option>
+                <option value="hindi">🇮🇳 Hindi (शुद्ध हिंदी)</option>
+                <option value="english">🇺🇸 English (Hollywood Master)</option>
+                <option value="multilingual">🌍 Multilingual Global</option>
+              </select>
+            </div>
+
+            {/* Auto Execute Switch */}
+            <div className="flex flex-col justify-center">
+              <label className="text-[11px] font-bold text-slate-300 font-mono block mb-1">
+                Auto-Execution Engine:
+              </label>
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    onNotify('VIP Subscription', 'VIP membership gives unlimited 8K generations, instant queue, and VIP models!', 'info');
-                    onNavigateToStudio('welcome_blog');
-                    onClose();
-                  }}
-                  className="px-3 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-extrabold text-xs shadow-md transition-all flex items-center gap-1"
+                  onClick={() => setAutoExecuteOnEnhance(!autoExecuteOnEnhance)}
+                  className={`flex-1 px-3 py-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 ${
+                    autoExecuteOnEnhance
+                      ? 'bg-gradient-to-r from-emerald-600 to-cyan-600 text-white border-emerald-400/50 shadow-md'
+                      : 'bg-slate-900 text-slate-400 border-slate-800'
+                  }`}
                 >
-                  <span>👑 Get Unlimited Subscription</span>
-                  <ArrowRight className="w-3 h-3" />
+                  <Zap className={`w-3.5 h-3.5 ${autoExecuteOnEnhance ? 'fill-current text-amber-300' : ''}`} />
+                  <span>{autoExecuteOnEnhance ? '⚡ Auto-Render ON' : 'Manual Preview'}</span>
                 </button>
               </div>
-            </div>
-          ) : (
-            <div className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-950/40 via-cyan-950/30 to-purple-950/40 border border-cyan-500/30 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-sm">👑</span>
-                <span className="text-xs font-bold text-cyan-300 font-['Syne']">
-                  VIP {user?.vipTier?.toUpperCase()} Subscriber • Unlimited Multi-Modal CoT Pipeline
-                </span>
-              </div>
-              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
-                ⚡ Priority Turbo
-              </span>
-            </div>
-          )}
-
-          {/* Modality Selector Bar */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-bold text-slate-300 uppercase tracking-wider font-mono flex items-center gap-1.5">
-                <Sliders className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Select Target Feature / Modality (टूल चुनें)</span>
-              </label>
-              <span className="text-[11px] text-cyan-400 font-mono">
-                {currentModalityConfig.badge}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-              {MODALITY_OPTIONS.map((m) => {
-                const isSelected = selectedModality === m.id;
-                return (
-                  <button
-                    key={m.id}
-                    onClick={() => {
-                      setSelectedModality(m.id);
-                      setEnhancedResult(null);
-                      setGeneratedPreviewUrl(null);
-                    }}
-                    className={`p-2.5 rounded-2xl border text-left transition-all flex items-center gap-2 ${
-                      isSelected
-                        ? 'bg-gradient-to-r from-cyan-950 to-indigo-950 border-cyan-400 text-white shadow-lg shadow-cyan-950/40 scale-[1.02]'
-                        : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800/60'
-                    }`}
-                  >
-                    <span className="text-lg">{m.icon}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-xs font-bold truncate leading-tight">{m.shortLabel}</div>
-                      <div className="text-[10px] text-slate-400 truncate">{m.id.replace('_', ' ')}</div>
-                    </div>
-                  </button>
-                );
-              })}
             </div>
           </div>
 
           {/* User Input Prompt Area */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-300 font-mono">
-                Your Idea / Rough Prompt (अपना विचार यहाँ लिखें)
+              <label className="text-xs font-bold text-slate-200 font-mono flex items-center gap-1.5">
+                <Wand2 className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Enter Any Prompt, Character, or Concept (कुछ भी लिखें):</span>
               </label>
-              <span className="text-[11px] text-slate-400">Hindi, Hinglish, or English supported</span>
+              <span className="text-[11px] text-slate-400 font-mono">
+                Motu Patlu, Shiva, Iron Man, Anime, Songs, Cinema & 3D Supported
+              </span>
             </div>
 
             <div className="relative">
@@ -907,569 +648,461 @@ export const OmniEnhanceModal: React.FC<OmniEnhanceModalProps> = ({
                 rows={3}
                 value={inputPrompt}
                 onChange={(e) => setInputPrompt(e.target.value)}
-                placeholder={currentModalityConfig.placeholder}
-                className="w-full px-4 py-3 rounded-2xl bg-slate-900/80 border border-slate-800 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 font-mono"
+                placeholder="Type your idea in Hindi, Hinglish, or English (e.g. 'Motu Patlu flying in futuristic Furfuri Nagar', 'Lord Shiva tandav 8K cinematic', 'Iron Man vs Thanos')..."
+                className="w-full px-4 py-3.5 rounded-2xl bg-slate-900/90 border border-slate-700/80 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 font-mono shadow-inner leading-relaxed"
               />
+
               <div className="absolute bottom-3 right-3 flex items-center gap-2">
                 <button
                   type="button"
-                  disabled={isEnhancing || isGeneratingPreview || !inputPrompt.trim()}
-                  onClick={handleEnhance}
-                  className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs border border-slate-700 flex items-center gap-1.5 transition-all disabled:opacity-50"
-                  title="Sirf prompt text ko enhance karein"
+                  disabled={isProcessing || !inputPrompt.trim()}
+                  onClick={() => handleOrchestrateMasterAi()}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-400 via-indigo-500 to-purple-600 hover:brightness-110 text-slate-950 font-black text-xs shadow-lg shadow-cyan-950/60 flex items-center gap-1.5 transition-all hover:scale-105 disabled:opacity-50 cursor-pointer"
                 >
-                  <Sparkles className={`w-3.5 h-3.5 ${isEnhancing ? 'animate-spin' : ''}`} />
-                  <span>{isEnhancing ? 'Thinking...' : '1. Enhance Prompt'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  disabled={isEnhancing || isGeneratingPreview || !inputPrompt.trim()}
-                  onClick={handleEnhanceAndAutoGenerate}
-                  className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-400 via-pink-400 to-cyan-300 hover:brightness-110 text-slate-950 font-black text-xs shadow-lg shadow-cyan-950/60 flex items-center gap-1.5 transition-all hover:scale-105 disabled:opacity-50 cursor-pointer"
-                  title="Prompt enhance karein aur turant 8K image/media maal render karein"
-                >
-                  <Zap className="w-3.5 h-3.5 fill-current text-slate-950" />
-                  <span>{isGeneratingPreview ? 'Rendering...' : '⚡ Enhance & Generate Maal'}</span>
+                  <Sparkles className={`w-4 h-4 text-slate-950 ${isProcessing ? 'animate-spin' : ''}`} />
+                  <span>{isProcessing ? 'Merging & Orchestrating...' : '⚡ Merge & Execute All AI'}</span>
                 </button>
               </div>
             </div>
 
-            {/* Quick Inspiration Chips */}
-            <div className="space-y-1">
-              <span className="text-[11px] text-slate-400 font-mono">Quick ideas to try:</span>
+            {/* Quick Starter Character & Universe Inspiration Chips */}
+            <div className="space-y-1 pt-1">
+              <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1">
+                <span>⚡ Instant One-Click Character Prompts:</span>
+              </div>
               <div className="flex flex-wrap gap-1.5">
-                {currentModalityConfig.quickExamples.map((ex, i) => (
+                {[
+                  { label: '🧸 Motu Patlu 3D', prompt: 'Motu Patlu enjoying hot samosas in Furfuri Nagar market, Pixar 3D animated comedy' },
+                  { label: '🔱 Lord Shiva 8K', prompt: 'Lord Shiva Mahadev meditating on Mount Kailash in Himalayan snow with glowing third eye and celestial aura, 8K epic' },
+                  { label: '🦸 Iron Man Lab', prompt: 'Iron Man holographic armor assembly in Tony Stark futuristic lab with volumetric plasma sparks' },
+                  { label: '⚔️ Goku vs Jiren', prompt: 'Goku mastering Ultra Instinct with silver glowing aura fighting Jiren in tournament of power' },
+                  { label: '🎬 Spider-Man Tokyo', prompt: 'Spider-Man swinging through Cyberpunk Neo Tokyo in rainy neon street, cinematic IMAX' },
+                  { label: '🎵 Bollywood Rap', prompt: 'High-energy Bollywood EDM Punjabi rap track with 130 bpm heavy 808 bass and catchy hook' },
+                ].map((item, idx) => (
                   <button
-                    key={i}
+                    key={idx}
                     type="button"
-                    onClick={() => setInputPrompt(ex)}
-                    className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800/80 text-[11px] text-slate-300 hover:text-cyan-300 transition-colors text-left truncate max-w-full"
+                    onClick={() => {
+                      setInputPrompt(item.prompt);
+                      handleOrchestrateMasterAi(item.prompt);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 hover:text-cyan-300 transition-colors"
                   >
-                    "{ex}"
+                    {item.label}
                   </button>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Enhanced Result Box */}
-          {enhancedResult && (() => {
-            const activePreviewMode: ModalModality = (selectedModality === 'auto' && enhancedResult.detectedModality)
-              ? (enhancedResult.detectedModality as ModalModality)
-              : selectedModality;
-            const resolvedConfig = MODALITY_OPTIONS.find((m) => m.id === activePreviewMode) || currentModalityConfig;
-
-            return (
-              <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-cyan-500/50 shadow-xl space-y-4 animate-in fade-in zoom-in-95">
-                <div className="flex flex-wrap items-center justify-between pb-3 border-b border-slate-800 gap-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center justify-center">
-                      <Sparkles className="w-4 h-4" />
+          {/* Master AI Orchestrated Result Dashboard */}
+          {masterResult && (
+            <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/90 border border-cyan-500/50 space-y-4 shadow-2xl shadow-cyan-950/50 animate-in fade-in slide-in-from-bottom-2">
+              
+              {/* Subject & Lore Anchor Banner */}
+              <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-gradient-to-r from-indigo-950/80 via-slate-900 to-cyan-950/80 border border-cyan-500/30">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">👑</span>
+                  <div>
+                    <div className="text-xs font-bold text-white font-['Syne']">
+                      Subject Detected: <span className="text-cyan-300 font-mono">{masterResult.detectedSubject}</span>
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="text-xs font-bold text-white font-['Syne']">
-                          Enhanced Master Prompt ({resolvedConfig.shortLabel})
-                        </h4>
-                        {enhancedResult.detectedModality && selectedModality === 'auto' && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 flex items-center gap-1">
-                            <span>🎯 Auto-Classified:</span>
-                            <span className="text-white">{resolvedConfig.shortLabel}</span>
-                            <span className="text-cyan-400">({Math.round((enhancedResult.confidenceScore ?? 0.98) * 100)}% Match)</span>
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-emerald-400 font-sans">
-                        {enhancedResult.explanation}
-                      </p>
+                    <div className="text-[10px] text-slate-400 font-mono">
+                      Universe Style: <span className="text-amber-300">{masterResult.detectedUniverse}</span>
                     </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {enhancedResult.chainOfThought && enhancedResult.chainOfThought.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setShowCoT(!showCoT)}
-                        className="px-2.5 py-1.5 rounded-xl bg-cyan-950/80 hover:bg-cyan-900/80 text-cyan-300 text-xs font-mono flex items-center gap-1 border border-cyan-700/50 transition-colors"
-                      >
-                        <span>🧠 {showCoT ? 'Hide CoT Reasoning' : 'Show CoT Reasoning'}</span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={handleCopy}
-                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors border border-slate-700"
-                    >
-                      {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copied ? 'Copied!' : 'Copy Prompt'}</span>
-                    </button>
                   </div>
                 </div>
 
-                {/* Chain-of-Thought (CoT) Reasoning Visualizer */}
-                {showCoT && enhancedResult.chainOfThought && enhancedResult.chainOfThought.length > 0 && (
-                  <div className="p-3.5 rounded-xl bg-slate-950/90 border border-indigo-500/30 space-y-2.5 animate-in fade-in">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono font-bold">
+                    Target: {masterResult.recommendedStudio.toUpperCase()}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleLaunchInStudio(masterResult.recommendedStudio, masterResult.masterEnhancedPrompt)}
+                    className="px-3 py-1 rounded-lg bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-bold text-xs shadow-md flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>🚀 Launch in Studio</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Output Multi-Modal Tabs */}
+              <div className="flex items-center gap-1.5 border-b border-slate-800 pb-2 overflow-x-auto">
+                {[
+                  { id: 'synthesis', label: '🌟 Master Synthesis', icon: '🌟' },
+                  { id: 'image', label: '🖼️ 8K Visual', icon: '🖼️' },
+                  { id: 'video', label: '🎬 60fps Cinema', icon: '🎬' },
+                  { id: 'script', label: '📜 Script & Dialogue', icon: '📜' },
+                  { id: 'music', label: '🎵 Music & Audio', icon: '🎵' },
+                  { id: '3d', label: '🕹️ 3D & Rigging', icon: '🕹️' },
+                  { id: 'strategy', label: '📄 Strategy Plan', icon: '📄' },
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => {
+                      setActiveOutputTab(t.id as any);
+                      if (t.id === '3d') setIs3DActive(true);
+                      if (t.id === 'music' && masterResult?.musicAndAudio) {
+                        playSynthAudio(masterResult.musicAndAudio.bpm || 124);
+                      }
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all whitespace-nowrap ${
+                      activeOutputTab === t.id
+                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 shadow-md shadow-cyan-950/40'
+                        : 'bg-slate-900/60 text-slate-400 hover:text-white hover:bg-slate-800/60 border border-slate-800'
+                    }`}
+                  >
+                    <span>{t.icon}</span>
+                    <span>{t.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Tab 1: Master Synthesis & Consensus */}
+              {activeOutputTab === 'synthesis' && (
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-indigo-300 font-mono flex items-center gap-1.5">
-                        <span>🧠 Context-Aware Chain-of-Thought (CoT) Reasoning Pipeline:</span>
+                      <span className="text-xs font-bold text-cyan-300 font-mono">
+                        Master Enhanced Prompt (All Models Unified):
                       </span>
-                      <span className="text-[10px] font-mono text-slate-400">4-Stage Deep Architecture</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyText(masterResult.masterEnhancedPrompt, 'master')}
+                        className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 text-[11px] font-mono flex items-center gap-1 border border-slate-800"
+                      >
+                        {copiedKey === 'master' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedKey === 'master' ? 'Copied' : 'Copy Prompt'}</span>
+                      </button>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {enhancedResult.chainOfThought.map((st, idx) => (
-                        <div key={idx} className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1">
-                          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200">
-                            <span>{st.icon || '🔹'}</span>
-                            <span className="text-cyan-300 font-mono text-[11px]">Stage {st.step}:</span>
-                            <span className="truncate text-[11px] text-white">{st.title}</span>
+                    <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 font-mono leading-relaxed select-all">
+                      {masterResult.masterEnhancedPrompt}
+                    </div>
+                  </div>
+
+                  {/* Multi-Model Consensus Metrics */}
+                  <div className="space-y-1.5 pt-2">
+                    <span className="text-[11px] font-mono text-slate-400">Merged Multi-AI Consensus Matrix:</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                      {masterResult.activeAiConsensus?.map((c, i) => (
+                        <div key={i} className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center justify-between text-xs">
+                          <div>
+                            <div className="text-white font-bold">{c.engineName}</div>
+                            <div className="text-[10px] text-slate-400">{c.role}</div>
                           </div>
-                          <p className="text-[11px] text-slate-400 leading-relaxed pl-5 font-sans">
-                            {st.thought}
-                          </p>
+                          <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded">
+                            {c.latencyMs}ms
+                          </span>
                         </div>
                       ))}
                     </div>
                   </div>
-                )}
-
-                {/* Master Prompt Text Box */}
-                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs sm:text-sm text-cyan-200 font-mono leading-relaxed select-all">
-                  {enhancedResult.enhancedPrompt}
                 </div>
+              )}
 
-                {/* Tags & Settings Pills */}
-                {enhancedResult.tags && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[10px] text-slate-400 font-mono">Suggested Tags:</span>
-                    {enhancedResult.tags.map((tag, idx) => (
-                      <span
-                        key={idx}
-                        className="px-2 py-0.5 rounded-md text-[10px] font-mono bg-cyan-950/70 text-cyan-300 border border-cyan-800/60"
-                      >
-                        #{tag}
-                      </span>
-                    ))}
+              {/* Tab 2: 8K Visual */}
+              {activeOutputTab === 'image' && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <span className="text-xs font-bold text-purple-300 font-mono">Visual Rendering Directives:</span>
+                      <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs space-y-1.5 text-slate-300 font-mono">
+                        <div><strong>Lighting:</strong> {masterResult.cinematicDirectives?.lighting}</div>
+                        <div><strong>Aspect Ratio:</strong> {masterResult.cinematicDirectives?.aspectRatio}</div>
+                        <div><strong>Color Grade:</strong> {masterResult.cinematicDirectives?.colorGrade}</div>
+                        <div><strong>VFX:</strong> {masterResult.cinematicDirectives?.vfxElements}</div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            triggerImageGen({
+                              prompt: masterResult.masterEnhancedPrompt,
+                              style: masterResult.detectedUniverse || 'Cinematic 8K',
+                              resolution: '8K',
+                              aspectRatio: '16:9',
+                            }).then((res) => {
+                              if (res?.assetUrl) setPreviewImageUrl(res.assetUrl);
+                            });
+                          }}
+                          className="flex-1 px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center justify-center gap-1.5"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" /> Re-Render 8K
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleLaunchInStudio('image_studio', masterResult.masterEnhancedPrompt)}
+                          className="flex-1 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-1.5"
+                        >
+                          Open Image Studio
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-xs font-bold text-cyan-300 font-mono">Instant 8K Visual Preview:</span>
+                      <div className="aspect-video rounded-2xl overflow-hidden border border-cyan-500/40 bg-black flex items-center justify-center relative">
+                        {previewImageUrl ? (
+                          <>
+                            <img src={previewImageUrl} alt="Render" className="w-full h-full object-cover" />
+                            <button
+                              onClick={() => safeDownloadMedia(previewImageUrl, 'master_8k_visual.jpg')}
+                              className="absolute bottom-2 right-2 px-2.5 py-1 rounded-lg bg-black/70 hover:bg-black text-white text-xs flex items-center gap-1 backdrop-blur"
+                            >
+                              <Download className="w-3.5 h-3.5" /> 8K
+                            </button>
+                          </>
+                        ) : (
+                          <div className="text-center p-4 text-slate-500 text-xs font-mono">
+                            <Sparkles className="w-6 h-6 mx-auto mb-1 text-cyan-400 animate-spin" />
+                            Rendering Master 8K Visual...
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                )}
+                </div>
+              )}
 
-                {/* Generated Live Multi-Modal Output Section */}
-                {(generatedPreviewUrl || generatedVideoUrl || generatedDoc || generatedSong || is3DActive) && (
-                  <div className="space-y-3 pt-3 border-t border-slate-800">
-                    {/* If 'all' modality selected, render tab switcher */}
-                    {activePreviewMode === 'all' && (
-                      <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-slate-950 border border-slate-800">
-                        {[
-                          { id: 'image', label: '🖼️ 8K Image' },
-                          { id: 'video', label: '🎬 60fps Video' },
-                          { id: 'music', label: '🎵 AI Music & Audio' },
-                          { id: 'document', label: '📄 Executive Doc' },
-                          { id: '3d', label: '🕹️ 3D Model Mesh' },
-                        ].map((tab) => (
-                          <button
-                            key={tab.id}
-                            type="button"
-                            onClick={() => setActiveAllTab(tab.id as typeof activeAllTab)}
-                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                              activeAllTab === tab.id
-                                ? 'bg-cyan-500 text-white shadow-md shadow-cyan-950'
-                                : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                            }`}
-                          >
-                            {tab.label}
-                          </button>
+              {/* Tab 3: 60fps Cinema */}
+              {activeOutputTab === 'video' && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <span className="text-xs font-bold text-amber-300 font-mono">Camera & Motion Blueprint:</span>
+                      <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs space-y-1.5 text-slate-300 font-mono">
+                        <div><strong>Camera Motion:</strong> {masterResult.cinematicDirectives?.cameraMotion}</div>
+                        <div><strong>Frame Rate:</strong> {masterResult.cinematicDirectives?.fps} FPS High Smoothness</div>
+                        <div><strong>LUT & Tone:</strong> {masterResult.cinematicDirectives?.colorGrade}</div>
+                        <div><strong>VFX Particles:</strong> {masterResult.cinematicDirectives?.vfxElements}</div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleLaunchInStudio('video_audio', masterResult.masterEnhancedPrompt)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg"
+                      >
+                        <VideoIcon className="w-4 h-4" /> Open in 8K Video Studio
+                      </button>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-xs font-bold text-amber-300 font-mono">Cinematic Motion Preview:</span>
+                      <div className="aspect-video rounded-2xl overflow-hidden border border-amber-500/40 bg-black flex items-center justify-center relative">
+                        {previewVideoUrl ? (
+                          <video src={previewVideoUrl} controls autoPlay loop playsInline className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="p-4 text-center text-xs text-slate-400 font-mono space-y-2">
+                            <Film className="w-6 h-6 mx-auto text-amber-400 animate-pulse" />
+                            <div>Camera Trajectory: {masterResult.cinematicDirectives?.cameraMotion}</div>
+                            <button
+                              onClick={() => {
+                                triggerVideoGen({
+                                  prompt: masterResult.masterEnhancedPrompt,
+                                  cinematicStyle: masterResult.cinematicDirectives?.cameraMotion || 'Dynamic 360 Orbit',
+                                  fps: 60,
+                                }).then((res) => {
+                                  if (res?.videoUrl) setPreviewVideoUrl(res.videoUrl);
+                                });
+                              }}
+                              className="px-3 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs"
+                            >
+                              ⚡ Encode 60fps Motion Plate
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 4: Script & Dialogue */}
+              {activeOutputTab === 'script' && (
+                <div className="space-y-3">
+                  <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <div>
+                        <h4 className="text-xs font-bold text-white font-['Syne']">{masterResult.storyAndDialogue?.sceneTitle}</h4>
+                        <p className="text-[11px] text-slate-400 font-mono">{masterResult.storyAndDialogue?.logline}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleVoice(masterResult.storyAndDialogue?.dialogueSnippet || '')}
+                        className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5"
+                      >
+                        <Volume2 className="w-3.5 h-3.5" />
+                        <span>{isSpeakingVoice ? 'Stop' : 'Voice Dialogue'}</span>
+                      </button>
+                    </div>
+
+                    <div className="space-y-1 text-xs font-mono">
+                      <span className="text-cyan-300 font-bold">Action Sequence Beats:</span>
+                      <ul className="list-disc list-inside text-slate-300 space-y-0.5">
+                        {masterResult.storyAndDialogue?.characterBeats?.map((b, i) => (
+                          <li key={i}>{b}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-950 border border-cyan-500/30 text-xs font-mono text-cyan-200">
+                      <strong>Dialogue Line:</strong> "{masterResult.storyAndDialogue?.dialogueSnippet}"
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleLaunchInStudio('film_studio', masterResult.masterEnhancedPrompt)}
+                      className="w-full px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-1.5"
+                    >
+                      <Film className="w-3.5 h-3.5 text-cyan-400" /> Open Film Studio & Screenwriter
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 5: Music & Audio */}
+              {activeOutputTab === 'music' && (
+                <div className="space-y-3">
+                  <div className="p-4 rounded-xl bg-slate-900 border border-purple-800/60 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-bold text-white">Genre: {masterResult.musicAndAudio?.genre}</div>
+                        <div className="text-[11px] text-purple-300 font-mono">
+                          {masterResult.musicAndAudio?.bpm} BPM • Key: {masterResult.musicAndAudio?.musicalKey} • {masterResult.musicAndAudio?.voiceStyle}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isSynthesizingAudio) stopAudio();
+                          else playSynthAudio(masterResult.musicAndAudio?.bpm || 124);
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                          isSynthesizingAudio ? 'bg-rose-600 text-white animate-pulse' : 'bg-purple-600 hover:bg-purple-500 text-white'
+                        }`}
+                      >
+                        {isSynthesizingAudio ? <Square className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                        <span>{isSynthesizingAudio ? 'Stop Beats' : 'Play Live Synth Audio'}</span>
+                      </button>
+                    </div>
+
+                    {isSynthesizingAudio && (
+                      <div className="flex items-center gap-1 h-5 px-3 bg-purple-950/80 rounded-lg">
+                        {[40, 80, 60, 100, 75, 90, 45, 85, 95, 65, 50, 70, 90, 30].map((h, i) => (
+                          <span
+                            key={i}
+                            className="flex-1 bg-gradient-to-t from-purple-500 to-cyan-400 rounded-full animate-pulse"
+                            style={{ height: `${h}%`, animationDelay: `${i * 0.08}s` }}
+                          />
                         ))}
                       </div>
                     )}
 
-                    {/* 1. Image Preview (Image, All, Video-to-Image Still) */}
-                    {((activePreviewMode === 'image') || (activePreviewMode === 'all' && activeAllTab === 'image')) && generatedPreviewUrl && (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                            <Check className="w-4 h-4" /> 8K Photorealistic AI Image:
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                safeDownloadMedia(generatedPreviewUrl, `iCALLOG_8K_Master_${Date.now()}.png`, {
-                                  type: 'image',
-                                  onSuccess: (msg) => onNotify('Download Complete', msg, 'success'),
-                                  onError: (err) => onNotify('Download Notice', err, 'info'),
-                                });
-                              }}
-                              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs flex items-center gap-1 transition-colors cursor-pointer"
-                            >
-                              <Download className="w-3.5 h-3.5" /> Download 8K
-                            </button>
-                            <a
-                              href={generatedPreviewUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-cyan-400 hover:underline flex items-center gap-1"
-                            >
-                              <Eye className="w-3.5 h-3.5" /> Full Resolution
-                            </a>
-                          </div>
-                        </div>
-                        <div className="relative aspect-video rounded-2xl overflow-hidden border border-cyan-500/40 shadow-2xl bg-slate-950">
-                          <img
-                            src={generatedPreviewUrl}
-                            alt="AI Generated Output"
-                            onError={() => {
-                              if (!generatedPreviewUrl.startsWith('/api/ai/image-proxy') && generatedPreviewUrl.startsWith('http')) {
-                                setGeneratedPreviewUrl(`/api/ai/image-proxy?url=${encodeURIComponent(generatedPreviewUrl)}`);
-                              } else {
-                                setGeneratedPreviewUrl('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=3840&q=95');
-                              }
-                            }}
-                            className="w-full h-full object-cover"
-                            style={{ imageRendering: 'crisp-edges' }}
-                          />
-                        </div>
+                    <div className="flex flex-wrap gap-1 text-[11px] font-mono">
+                      <span className="text-slate-400">Foley & SFX:</span>
+                      {masterResult.musicAndAudio?.soundFx?.map((sfx, i) => (
+                        <span key={i} className="px-2 py-0.5 rounded bg-purple-950 border border-purple-800 text-purple-200">
+                          {sfx}
+                        </span>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleLaunchInStudio('song_studio', masterResult.masterEnhancedPrompt)}
+                      className="w-full px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center justify-center gap-1.5"
+                    >
+                      <Music className="w-3.5 h-3.5" /> Open Music Studio & Composer
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 6: 3D & Rigging */}
+              {activeOutputTab === '3d' && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <span className="text-xs font-bold text-cyan-300 font-mono">3D Skeletal Rigging Spec:</span>
+                      <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs space-y-1.5 text-slate-300 font-mono">
+                        <div><strong>Topology:</strong> {masterResult.threeDimParams?.meshTopology}</div>
+                        <div><strong>Bone Hierarchy:</strong> {masterResult.threeDimParams?.boneCount} Joints (Inverse Kinematics)</div>
+                        <div><strong>Shader Engine:</strong> {masterResult.threeDimParams?.shaderStyle}</div>
+                        <div><strong>PBR Material:</strong> {masterResult.threeDimParams?.materialPbr}</div>
                       </div>
-                    )}
 
-                    {/* 2. Video Preview (Video, Video-to-Video, All) */}
-                    {((activePreviewMode === 'video' || activePreviewMode === 'video_to_video') || (activePreviewMode === 'all' && activeAllTab === 'video')) && generatedVideoUrl && (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-cyan-400 flex items-center gap-1.5">
-                            <VideoIcon className="w-4 h-4 text-cyan-400" /> Cinematic 60fps AI Video:
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-cyan-950 text-cyan-300 border border-cyan-800">
-                              60 FPS • 8K Master
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                safeDownloadMedia(generatedVideoUrl, `iCALLOG_60fps_Cinema_${Date.now()}.mp4`, {
-                                  type: 'video',
-                                  onSuccess: (msg) => onNotify('Download Complete', msg, 'success'),
-                                  onError: (err) => onNotify('Download Notice', err, 'info'),
-                                });
-                              }}
-                              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs flex items-center gap-1 cursor-pointer"
-                            >
-                              <Download className="w-3.5 h-3.5" /> Save Video
-                            </button>
-                          </div>
-                        </div>
-                        <div className="relative aspect-video rounded-2xl overflow-hidden border border-cyan-500/40 shadow-2xl bg-black">
-                          <video
-                            src={generatedVideoUrl}
-                            controls
-                            autoPlay
-                            loop
-                            playsInline
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 3. Image + Video (Side by side comparison) */}
-                    {activePreviewMode === 'image_to_video' && (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-indigo-400 flex items-center gap-1.5">
-                            <Layers className="w-4 h-4" /> Image-to-Video Parallax Motion Pair:
-                          </span>
-                          <span className="text-[10px] font-mono text-slate-400">Anchor Frame → Animated 60fps</span>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <span className="text-[10px] text-slate-400 font-mono">1. Starting Keyframe (Image)</span>
-                            <div className="aspect-video rounded-xl overflow-hidden border border-indigo-500/40 bg-black">
-                              {generatedPreviewUrl ? (
-                                <img src={generatedPreviewUrl} alt="Keyframe" className="w-full h-full object-cover" />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center text-xs text-slate-500">Rendering...</div>
-                              )}
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-[10px] text-cyan-400 font-mono">2. Parallax Motion Video (60fps)</span>
-                            <div className="aspect-video rounded-xl overflow-hidden border border-cyan-500/40 bg-black">
-                              {generatedVideoUrl ? (
-                                <video src={generatedVideoUrl} controls autoPlay loop playsInline className="w-full h-full object-cover" />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center text-xs text-slate-500">Rendering...</div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 4. Image + Image (Dual Fusion) */}
-                    {activePreviewMode === 'image_to_image' && (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-purple-400 flex items-center gap-1.5">
-                            <ImageIcon className="w-4 h-4" /> Image + Image Neural Style Fusion:
-                          </span>
-                          <span className="text-[10px] font-mono text-slate-400">Geometry Base + Stylized Result</span>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <span className="text-[10px] text-slate-400 font-mono">Original Base Geometry</span>
-                            <div className="aspect-video rounded-xl overflow-hidden border border-slate-700 bg-black">
-                              {secondaryImageUrl && <img src={secondaryImageUrl} alt="Base" className="w-full h-full object-cover" />}
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-[10px] text-purple-300 font-mono">Transferred 8K Style</span>
-                            <div className="aspect-video rounded-xl overflow-hidden border border-purple-500/50 bg-black">
-                              {generatedPreviewUrl && <img src={generatedPreviewUrl} alt="Styled" className="w-full h-full object-cover" />}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 5. Video + Image (Action Frame Extraction) */}
-                    {activePreviewMode === 'video_to_image' && (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                            <Eye className="w-4 h-4" /> Video Frame Extraction → 8K IMAX Still:
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <span className="text-[10px] text-slate-400 font-mono">Video Scene Sequence</span>
-                            <div className="aspect-video rounded-xl overflow-hidden border border-slate-800 bg-black">
-                              {generatedVideoUrl && <video src={generatedVideoUrl} controls autoPlay loop playsInline className="w-full h-full object-cover" />}
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-[10px] text-amber-300 font-mono">Deblurred 8K Action Still</span>
-                            <div className="aspect-video rounded-xl overflow-hidden border border-amber-500/50 bg-black">
-                              {generatedPreviewUrl && <img src={generatedPreviewUrl} alt="Still" className="w-full h-full object-cover" />}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 6. Music & Audio Synth (Music, All) */}
-                    {((activePreviewMode === 'music') || (activePreviewMode === 'all' && activeAllTab === 'music')) && generatedSong && (
-                      <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950/60 to-indigo-950/60 border border-purple-800/60 space-y-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-800/40 pb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-lg bg-purple-600/30 text-purple-300 border border-purple-500/40 flex items-center justify-center">
-                              <Music className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <h4 className="text-xs font-bold text-white font-['Syne']">{generatedSong.title}</h4>
-                              <p className="text-[11px] text-purple-300 font-mono">
-                                {generatedSong.tempoBpm} BPM • Key: {generatedSong.musicalKey} • {generatedSong.genre}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Synth Audio Controls */}
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (isSynthesizingAudio) stopSynthAudio();
-                                else playSynthAudio(generatedSong.tempoBpm);
-                              }}
-                              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-md ${
-                                isSynthesizingAudio
-                                  ? 'bg-rose-600 text-white animate-pulse'
-                                  : 'bg-purple-600 hover:bg-purple-500 text-white'
-                              }`}
-                            >
-                              {isSynthesizingAudio ? <Square className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-                              <span>{isSynthesizingAudio ? 'Stop Synth Audio' : 'Play Live Synth Audio'}</span>
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Visualizer wave animation when playing */}
-                        {isSynthesizingAudio && (
-                          <div className="flex items-center gap-1 h-6 px-3 bg-purple-950/80 rounded-lg">
-                            {[40, 80, 60, 100, 75, 90, 45, 85, 95, 65, 50, 70, 90, 30].map((h, i) => (
-                              <span
-                                key={i}
-                                className="flex-1 bg-gradient-to-t from-purple-500 to-cyan-400 rounded-full animate-pulse"
-                                style={{ height: `${h}%`, animationDelay: `${i * 0.08}s` }}
-                              />
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Lyrics Preview */}
-                        <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 font-mono max-h-36 overflow-y-auto whitespace-pre-wrap leading-relaxed select-all">
-                          {generatedSong.lyrics}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 7. Executive Document Preview (Document, Film, All) */}
-                    {((activePreviewMode === 'document' || activePreviewMode === 'film') || (activePreviewMode === 'all' && activeAllTab === 'document')) && generatedDoc && (
-                      <div className="p-4 rounded-2xl bg-slate-950 border border-cyan-500/40 space-y-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
-                          <div className="flex items-center gap-2">
-                            <FileText className="w-4 h-4 text-cyan-400" />
-                            <h4 className="text-xs font-bold text-white font-['Syne']">{generatedDoc.title}</h4>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard.writeText(generatedDoc.content);
-                                setCopiedDoc(true);
-                                setTimeout(() => setCopiedDoc(false), 2000);
-                                onNotify('Copied!', 'Full document copied to clipboard.', 'success');
-                              }}
-                              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1 border border-slate-700"
-                            >
-                              {copiedDoc ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                              <span>{copiedDoc ? 'Copied' : 'Copy Text'}</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDownloadDoc('doc')}
-                              className="px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs flex items-center gap-1 shadow-sm"
-                            >
-                              <Download className="w-3.5 h-3.5" /> Download .doc
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDownloadDoc('txt')}
-                              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1"
-                            >
-                              <Download className="w-3.5 h-3.5" /> .txt
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Document Sections Chips */}
-                        {generatedDoc.sections && generatedDoc.sections.length > 0 && (
-                          <div className="flex flex-wrap items-center gap-1">
-                            <span className="text-[10px] text-slate-400 font-mono">Sections:</span>
-                            {generatedDoc.sections.map((sec, i) => (
-                              <span key={i} className="px-2 py-0.5 rounded text-[10px] bg-slate-900 border border-slate-800 text-cyan-300 font-mono">
-                                {sec}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-
-                        <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 font-mono max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed select-all">
-                          {generatedDoc.content}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 8. 3D WebGL Mesh Preview (3D, All) */}
-                    {((activePreviewMode === '3d') || (activePreviewMode === 'all' && activeAllTab === '3d')) && is3DActive && (
-                      <div className="p-3.5 rounded-2xl bg-slate-950 border border-cyan-500/40 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Box className="w-4 h-4 text-cyan-400 animate-spin" />
-                            <span className="text-xs font-bold text-white font-['Syne']">Interactive 3D WebGL Asset (Drag to Orbit)</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setIsWireframe3D(!isWireframe3D)}
-                              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs border border-slate-700"
-                            >
-                              {isWireframe3D ? 'Solid Shading' : 'Wireframe Mesh'}
-                            </button>
-                            <span className="text-[10px] font-mono text-slate-400">Quad: 35,000 Verts</span>
-                          </div>
-                        </div>
-
-                        <div
-                          ref={threeCanvasRef}
-                          className="w-full h-56 rounded-xl overflow-hidden border border-cyan-500/30 bg-black cursor-grab active:cursor-grabbing"
-                        />
-                        <p className="text-[10px] text-slate-400 text-center font-mono">
-                          Calibrated for PBR Roughness/Metallic and 52-Bone Skeletal Hierarchy.
-                        </p>
-                      </div>
-                    )}
-
-                    {/* 9. Voiceover Audio Speech (Voice) */}
-                    {activePreviewMode === 'voice' && (
-                      <div className="p-4 rounded-2xl bg-slate-950 border border-indigo-500/40 flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 flex items-center justify-center">
-                            <Mic className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-bold text-white">Broadcast Studio Voiceover</h4>
-                            <p className="text-[11px] text-slate-400 font-mono">Neumann U87 condenser acoustics • Natural breath inflection</p>
-                          </div>
-                        </div>
-
+                      <div className="flex gap-2">
                         <button
                           type="button"
-                          onClick={() => handleToggleVoice(enhancedResult.enhancedPrompt)}
-                          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
-                            isSpeakingVoice
-                              ? 'bg-rose-600 text-white animate-pulse'
-                              : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md'
-                          }`}
+                          onClick={() => setIsWireframe3D(!isWireframe3D)}
+                          className="flex-1 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-bold border border-slate-700"
                         >
-                          <Volume2 className="w-4 h-4" />
-                          <span>{isSpeakingVoice ? 'Stop Speaking' : 'Play Voice Narration'}</span>
+                          {isWireframe3D ? 'Solid Shading' : 'Wireframe Mesh'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleLaunchInStudio('holo_sculpt_3d', masterResult.masterEnhancedPrompt)}
+                          className="flex-1 px-3 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs"
+                        >
+                          Open 3D Sculpt
                         </button>
                       </div>
-                    )}
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-xs font-bold text-cyan-300 font-mono">Interactive 3D WebGL Viewport:</span>
+                      <div
+                        ref={threeCanvasRef}
+                        className="w-full h-48 rounded-xl overflow-hidden border border-cyan-500/40 bg-black cursor-grab active:cursor-grabbing"
+                      />
+                    </div>
                   </div>
-                )}
-
-                {/* Action Buttons */}
-                <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    disabled={isGeneratingPreview}
-                    onClick={handleGenerateInstantPreview}
-                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-950/50 flex items-center gap-2 transition-all disabled:opacity-50"
-                  >
-                    <Sparkles className={`w-4 h-4 ${isGeneratingPreview ? 'animate-spin' : ''}`} />
-                    <span>
-                      {isGeneratingPreview
-                        ? 'Generating Multi-Modal Output...'
-                        : `Generate ${resolvedConfig.shortLabel} Here (यहाँ बनाएं)`}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleOpenInStudio}
-                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-cyan-950/60 flex items-center gap-2 transition-all"
-                  >
-                    <span>Open & Create in {resolvedConfig.shortLabel} Studio</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
                 </div>
-              </div>
-            );
-          })()}
+              )}
+
+              {/* Tab 7: Strategy Plan */}
+              {activeOutputTab === 'strategy' && (
+                <div className="space-y-3">
+                  <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2 text-xs font-mono">
+                    <h4 className="font-bold text-white font-['Syne']">Executive Creative Strategy:</h4>
+                    <p className="text-slate-300 leading-relaxed">{masterResult.documentPlan?.summary}</p>
+                    <div className="pt-2">
+                      <span className="text-cyan-300 font-bold block mb-1">Execution Action Items:</span>
+                      <ul className="list-disc list-inside text-slate-300 space-y-1">
+                        {masterResult.documentPlan?.actionItems?.map((act, i) => (
+                          <li key={i}>{act}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleLaunchInStudio('office_suite', masterResult.masterEnhancedPrompt)}
+                      className="w-full px-4 py-2 mt-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs flex items-center justify-center gap-1.5"
+                    >
+                      <FileText className="w-3.5 h-3.5" /> Open Office & Document Studio
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Modal Bottom Footer Bar */}
-        <div className="p-3.5 sm:p-4 border-t border-slate-800/80 bg-slate-900/60 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+        <div className="p-3.5 sm:p-4 border-t border-slate-800 bg-slate-950/80 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400 shrink-0">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Universal AI Architect Active for all media formats</span>
+            <span className="font-mono">Unified Master AI Engine (Gemini 3.8 + Flux + Audio + Cinema + 3D)</span>
           </div>
           <div className="flex items-center gap-3">
-            <span>Free Tier & VIP Diamond Unlocked</span>
+            <span className="font-mono text-cyan-300">Zero Quota Stalls • 100% Free Pass Active</span>
             <button
               onClick={onClose}
-              className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs"
+              className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
             >
               Close
             </button>

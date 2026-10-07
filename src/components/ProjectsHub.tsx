@@ -185,6 +185,26 @@ export const ProjectsHub: React.FC<ProjectsHubProps> = ({
         setProjects((prev) => (prev === DEFAULT_PROJECTS ? idbProjects : prev));
       }
     }).catch(console.warn);
+
+    // Listen for real-time project imports from GlobalSearchModal
+    const handleProjectsUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const imported = customEvent.detail;
+      if (imported && imported.id) {
+        setProjects((prev) => {
+          const idx = prev.findIndex((p) => p.id === imported.id);
+          if (idx >= 0) {
+            const copy = [...prev];
+            copy[idx] = imported;
+            return copy;
+          }
+          return [imported, ...prev];
+        });
+      }
+    };
+
+    window.addEventListener('icallog_projects_updated', handleProjectsUpdated);
+    return () => window.removeEventListener('icallog_projects_updated', handleProjectsUpdated);
   }, []);
 
   // Sync workbench inputs whenever activeProject changes

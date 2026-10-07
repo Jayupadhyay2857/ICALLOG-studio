@@ -1,10 +1,14 @@
 export type SubjectFormCategory =
   | 'auto'
   | 'cartoon_toon'
+  | 'superhero_comic'
   | 'anime_manga'
   | 'ott_webseries'
   | 'movie_cinema'
   | 'video_game'
+  | 'gods_mythology'
+  | 'celebrity_icon'
+  | 'scifi_fantasy'
   | 'mature_18'
   | 'male'
   | 'female'
@@ -41,7 +45,7 @@ export const SUBJECT_FORM_PRESETS: SubjectPreset[] = [
     label: '🤖 Auto-Detect (Global AI Smart Scanner)',
     icon: '🤖',
     badge: 'AI Smart',
-    description: 'Universal AI Scanner: Auto-detects World Cartoons, Anime, OTT Series, Movies, Games, 18+ Genres, Places & Characters',
+    description: 'Universal AI Scanner: Auto-detects World Cartoons, Superheroes, Anime, Cinema, Games, Gods, Celebrities, 18+ Genres & Places',
     promptSuffix: '',
   },
   {
@@ -53,12 +57,28 @@ export const SUBJECT_FORM_PRESETS: SubjectPreset[] = [
     promptSuffix: ', vibrant animated cartoon art style, expressive 3D toon features, dynamic animation pose, high quality character render, rich colorful animation lighting',
   },
   {
+    id: 'superhero_comic',
+    label: '🦸 Superheroes & Comic Icons',
+    icon: '🦸',
+    badge: 'Superhero',
+    description: 'Iron Man, Batman, Spider-Man, Superman, Joker, Thor, Wolverine, Deadpool, Shaktimaan, Krrish, Marvel & DC Universe',
+    promptSuffix: ', legendary superhero cinematic costume detailing, heroic powerful stance, volumetric rim lighting, photorealistic 8K IMAX blockbuster render',
+  },
+  {
     id: 'anime_manga',
     label: '⚔️ Anime, Manga & Manhwa',
     icon: '⚔️',
     badge: 'Anime World',
-    description: 'Naruto, Dragon Ball Goku, One Piece Luffy, Attack on Titan, Demon Slayer, Jujutsu Kaisen Gojo, Solo Leveling, Ghibli',
+    description: 'Naruto, Dragon Ball Goku, One Piece Luffy, Zoro, Attack on Titan, Demon Slayer, Jujutsu Kaisen Gojo, Solo Leveling, Ghibli',
     promptSuffix: ', masterpiece anime aesthetic, dynamic Ufotable / MAPPA animation quality, cel-shaded high contrast, dramatic cinematic anime lighting, crisp lineart',
+  },
+  {
+    id: 'gods_mythology',
+    label: '🔱 Gods, Myth & Historical Legends',
+    icon: '🔱',
+    badge: 'Divine Myth',
+    description: 'Lord Shiva, Lord Krishna, Lord Rama, Hanuman, Thor, Zeus, Odin, Cleopatra, Shivaji Maharaj, Maharana Pratap, Samurai, Spartans',
+    promptSuffix: ', divine celestial majesty, radiant golden sacred aura, intricate mythological ornaments and weapons, glorious photorealistic 8K spiritual grandeur',
   },
   {
     id: 'ott_webseries',
@@ -73,16 +93,32 @@ export const SUBJECT_FORM_PRESETS: SubjectPreset[] = [
     label: '🎬 Blockbuster Movies & Cinema',
     icon: '🎬',
     badge: 'Blockbuster',
-    description: 'Marvel MCU, DC Batman, Avengers, Spider-Man, RRR, KGF Rocky Bhai, Bahubali, Pushpa, Avatar, Star Wars, Harry Potter',
-    promptSuffix: ', Hollywood 8K IMAX blockbuster cinema scale, volumetric volumetric lighting, photorealistic textures, dramatic epic cinematic angle',
+    description: 'RRR, KGF Rocky Bhai, Bahubali, Pushpa, Avatar, Star Wars, Harry Potter, John Wick, Jack Sparrow, Interstellar',
+    promptSuffix: ', Hollywood 8K IMAX blockbuster cinema scale, volumetric atmospheric lighting, photorealistic textures, dramatic epic cinematic angle',
   },
   {
     id: 'video_game',
-    label: '🎮 Video Games & Gaming Worlds',
+    label: '🎮 Video Games & Gaming Legends',
     icon: '🎮',
     badge: 'Gaming AAA',
     description: 'GTA 5/6, Witcher Geralt, Cyberpunk 2077, God of War Kratos, Red Dead 2, Elden Ring, BGMI / PUBG, Minecraft, Free Fire, Valorant',
     promptSuffix: ', AAA next-gen Unreal Engine 5 render, ray-traced global illumination, octane 3D photorealistic shaders, ultra-detailed gaming character model',
+  },
+  {
+    id: 'celebrity_icon',
+    label: '👑 Celebrities, VIPs & Real Stars',
+    icon: '👑',
+    badge: 'Celebrity',
+    description: 'Virat Kohli, Cristiano Ronaldo, Messi, Shah Rukh Khan, Salman Khan, Elon Musk, Taylor Swift, BTS, Rock Dwayne Johnson',
+    promptSuffix: ', ultra-realistic red-carpet and arena lighting, authentic facial expressions and likeness, high-definition 8K photography, crystal sharp optics',
+  },
+  {
+    id: 'scifi_fantasy',
+    label: '🧙 Sci-Fi, Fantasy & Original Archetypes',
+    icon: '🧙',
+    badge: 'Fantasy Sci-Fi',
+    description: 'Cyberpunk Hacker, Dark Knight, High Elf Sorceress, Steampunk Engineer, Space Marine, Vampire Lord, Werewolf, Celestial Angel',
+    promptSuffix: ', intricate fantasy concept art detailing, volumetric glowing magic or cybernetic luminescence, hyper-detailed textures, cinematic composition',
   },
   {
     id: 'mature_18',
@@ -199,6 +235,15 @@ const KEYWORDS: Record<SubjectFormCategory, string[]> = {
     'mr bean cartoon', 'mr bean animated', 'simpsons', 'homer simpson', 'family guy'
   ],
 
+  superhero_comic: [
+    'superhero', 'comic', 'marvel', 'mcu', 'dc', 'avengers', 'justice league', 'iron man', 'tony stark',
+    'batman', 'bruce wayne', 'dark knight', 'gotham', 'spider-man', 'spiderman', 'peter parker',
+    'miles morales', 'superman', 'clark kent', 'man of steel', 'joker', 'thor', 'wolverine', 'logan',
+    'deadpool', 'wade wilson', 'hulk', 'captain america', 'doctor strange', 'black panther', 'wakanda',
+    'thanos', 'infinity gauntlet', 'wonder woman', 'flash', 'aquaman', 'green lantern', 'shaktimaan',
+    'krrish', 'flying jatt', 'minnal murali', 'venom', 'magneto', 'daredevil', 'harley quinn'
+  ],
+
   anime_manga: [
     'anime', 'manga', 'manhwa', 'otaku', 'naruto', 'sasuke', 'sakura', 'kakashi', 'itachi', 'akatsuki',
     'dragon ball', 'goku', 'vegeta', 'gohan', 'frieza', 'super saiyan', 'one piece', 'luffy', 'zoro',
@@ -212,6 +257,15 @@ const KEYWORDS: Record<SubjectFormCategory, string[]> = {
     'sailor moon', 'one punch man', 'saitama', 'genos', 'mob psycho', 'vinland saga', 'berserk', 'guts',
     'sword art online', 'kirito', 'asuna', 'haikyuu', 'black clover', 'asta', 'code geass', 'lelouch',
     'jojos bizarre adventure', 'jotaro', 'dio brando', 'evangelion', 'shinji', 'asuka', 're zero'
+  ],
+
+  gods_mythology: [
+    'shiva', 'mahadev', 'bholenath', 'kailash', 'trishul', 'krishna', 'radha krishna', 'vrindavan',
+    'flute krishna', 'ram', 'shree ram', 'ayodhya', 'hanuman', 'bajrangbali', 'ganesh', 'ganpati',
+    'durga', 'kali maa', 'vishnu', 'brahma', 'lakshmi', 'saraswati', 'zeus', 'olympus', 'poseidon',
+    'hades', 'thor god', 'odin', 'asgard', 'loki', 'anubis', 'ra egyptian', 'cleopatra', 'hercules',
+    'achilles', 'shivaji maharaj', 'chhatrapati', 'maharana pratap', 'prithviraj chauhan', 'samurai',
+    'spartan', 'leonidas', 'viking warrior', 'valkyrie', 'knight templar', 'pharaoh'
   ],
 
   ott_webseries: [
@@ -232,20 +286,14 @@ const KEYWORDS: Record<SubjectFormCategory, string[]> = {
 
   movie_cinema: [
     'movie', 'cinema', 'blockbuster', 'film', 'hollywood', 'bollywood', 'tollywood', 'kollywood',
-    'marvel', 'mcu', 'avengers', 'iron man', 'tony stark', 'captain america', 'thor', 'hulk',
-    'thanos', 'infinity gauntlet', 'spider-man', 'spiderman', 'peter parker', 'miles morales',
-    'doctor strange', 'black panther', 'wakanda', 'guardians of the galaxy', 'wolverine', 'deadpool',
-    'x-men', 'dc comics', 'batman', 'bruce wayne', 'the dark knight', 'joker', 'superman', 'clark kent',
-    'wonder woman', 'aquaman', 'the flash', 'justice league', 'rrr', 'alluri sitarama raju', 'komaram bheem',
-    'kgf', 'rocky bhai', 'kgf chapter', 'salaar', 'bahubali', 'amarendra baahubali', 'kattappa', 'bhallaladeva',
-    'pushpa', 'pushpa raj', 'srivalli', 'jawan', 'pathaan', 'srk movie', 'dangal', 'kalki 2898 ad',
-    'bhairava', 'ashwatthama', 'harry potter', 'hogwarts', 'voldemort', 'dumbledore', 'hermione',
-    'star wars', 'darth vader', 'jedi', 'luke skywalker', 'lightsaber', 'yoda', 'mandalorian', 'baby yoda',
-    'lord of the rings', 'lotr', 'frodo', 'gandalf', 'sauron', 'gollum', 'middle earth', 'avatar movie',
-    'pandora', 'na vi', 'jake sully', 'interstellar', 'cooper', 'oppenheimer', 'cillian murphy',
-    'inception', 'matrix', 'neo', 'morpheus', 'john wick', 'keanu reeves', 'fast and furious', 'dom toretto',
-    'jurassic park', 't-rex dinosaur', 'titanic', 'jack and rose', 'gladiator', 'maximus', 'pirates of the caribbean',
-    'jack sparrow'
+    'rrr', 'alluri sitarama raju', 'komaram bheem', 'kgf', 'rocky bhai', 'kgf chapter', 'salaar',
+    'bahubali', 'amarendra baahubali', 'kattappa', 'bhallaladeva', 'pushpa', 'pushpa raj', 'srivalli',
+    'jawan', 'pathaan', 'srk movie', 'dangal', 'kalki 2898 ad', 'bhairava', 'ashwatthama',
+    'harry potter', 'hogwarts', 'voldemort', 'dumbledore', 'hermione', 'star wars', 'darth vader',
+    'jedi', 'luke skywalker', 'lightsaber', 'yoda', 'mandalorian', 'baby yoda', 'lord of the rings',
+    'lotr', 'frodo', 'gandalf', 'sauron', 'gollum', 'avatar movie', 'pandora', 'na vi', 'jake sully',
+    'interstellar', 'oppenheimer', 'inception', 'matrix', 'neo', 'john wick', 'keanu reeves',
+    'jack sparrow', 'pirates of the caribbean', 'gladiator', 'maximus', 'fast and furious', 'dom toretto'
   ],
 
   video_game: [
@@ -262,6 +310,20 @@ const KEYWORDS: Record<SubjectFormCategory, string[]> = {
     'zhongli', 'final fantasy', 'cloud strife', 'sephiroth', 'tifa', 'mortal kombat', 'scorpion',
     'sub-zero', 'tekken', 'jin kazama', 'kazuya', 'street fighter', 'ryu', 'ken', 'apex legends',
     'overwatch', 'tracer', 'genji', 'league of legends', 'lol', 'jinx', 'arcane'
+  ],
+
+  celebrity_icon: [
+    'virat kohli', 'kohli', 'ms dhoni', 'dhoni', 'rohit sharma', 'cristiano ronaldo', 'ronaldo',
+    'cr7', 'siuu', 'lionel messi', 'messi', 'shah rukh khan', 'srk', 'salman khan', 'amitabh bachchan',
+    'rajinikanth', 'allu arjun', 'prabhas', 'elon musk', 'taylor swift', 'bts', 'dwayne johnson',
+    'the rock', 'keanu reeves', 'bruce lee', 'jackie chan', 'michael jackson', 'eminem'
+  ],
+
+  scifi_fantasy: [
+    'cyberpunk hacker', 'neon samurai', 'steampunk engineer', 'high elf', 'elf sorceress',
+    'dark knight', 'space marine', 'vampire lord', 'werewolf alpha', 'celestial angel',
+    'demon king', 'android assassin', 'galactic bounty hunter', 'necromancer', 'sorcerer',
+    'wizard fantasy', 'paladin', 'mech pilot'
   ],
 
   mature_18: [
@@ -446,7 +508,11 @@ export function detectSubjectFromPrompt(promptText: string): SubjectDetectionRes
 
   const categoriesToCheck: SubjectFormCategory[] = [
     'cartoon_toon',
+    'superhero_comic',
     'anime_manga',
+    'gods_mythology',
+    'celebrity_icon',
+    'scifi_fantasy',
     'ott_webseries',
     'movie_cinema',
     'video_game',
@@ -490,7 +556,11 @@ export function detectSubjectFromPrompt(promptText: string): SubjectDetectionRes
     const badgeColorMap: Record<SubjectFormCategory, string> = {
       auto: 'text-cyan-400 bg-cyan-950/70 border-cyan-500/50',
       cartoon_toon: 'text-amber-400 bg-amber-950/70 border-amber-500/60 shadow-amber-900/30',
+      superhero_comic: 'text-sky-400 bg-sky-950/70 border-sky-500/60 shadow-sky-900/30',
       anime_manga: 'text-rose-400 bg-rose-950/70 border-rose-500/60 shadow-rose-900/30',
+      gods_mythology: 'text-yellow-400 bg-yellow-950/70 border-yellow-500/60 shadow-yellow-900/30',
+      celebrity_icon: 'text-emerald-300 bg-emerald-950/70 border-emerald-500/60 shadow-emerald-900/30',
+      scifi_fantasy: 'text-teal-400 bg-teal-950/70 border-teal-500/60 shadow-teal-900/30',
       ott_webseries: 'text-purple-400 bg-purple-950/70 border-purple-500/60 shadow-purple-900/30',
       movie_cinema: 'text-red-400 bg-red-950/70 border-red-500/60 shadow-red-900/30',
       video_game: 'text-emerald-400 bg-emerald-950/70 border-emerald-500/60 shadow-emerald-900/30',

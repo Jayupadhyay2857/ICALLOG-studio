@@ -23,8 +23,9 @@ import {
   generateAiImage,
   generateAiDocument,
   generateAiSongLyrics,
+  orchestrateMasterAiRequest,
 } from './server/gemini.ts';
-import { UserProfile, PaymentTransaction, TransactionRecord } from './server/types.ts';
+import { UserProfile, PaymentTransaction, TransactionRecord, ProjectItem } from './server/types.ts';
 
 const app = express();
 const PORT = 3000;
@@ -667,6 +668,25 @@ app.post('/api/ai/enhance-prompt', async (req: Request, res: Response) => {
   });
 });
 
+// 6-Master. Omni-AI Unified Master Orchestration Engine (Merges All AI models into custom App AI)
+app.post('/api/ai/master-orchestrate', async (req: Request, res: Response) => {
+  const { prompt, aiMode = 'omni_fusion', language = 'auto', creativityLevel = 0.8, targetStudio, autoExecute = false } = req.body;
+  try {
+    const orchestration = await orchestrateMasterAiRequest({
+      prompt: prompt || 'Motu Patlu in futuristic adventure',
+      aiMode,
+      language,
+      creativityLevel,
+      targetStudio,
+      autoExecute,
+    });
+    res.json(orchestration);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Master AI Orchestration failed';
+    res.status(500).json({ success: false, error: msg });
+  }
+});
+
 // 6b. AI Executive Document Generator (Office Docs, Pitch Decks, Reports)
 app.post('/api/ai/generate-doc', async (req: Request, res: Response) => {
   const { topic, format = 'Executive Report', language = 'English/Hindi' } = req.body;
@@ -1300,6 +1320,787 @@ app.delete('/api/storage/assets/:id', (req: Request, res: Response) => {
   const userId = (req.query.userId as string) || 'demo_user';
   const deleted = deleteAsset(assetId, userId);
   res.json({ success: deleted });
+});
+
+// 18. Cross-Platform Global Entertainment & TMDB/OMDb Search Aggregator
+app.get('/api/entertainment/search', async (req: Request, res: Response) => {
+  const query = ((req.query.q as string) || '').trim();
+  const mediaType = (req.query.type as string) || 'all';
+  const customTmdbKey = (req.query.tmdbKey as string) || process.env.TMDB_API_KEY || '';
+  const customOmdbKey = (req.query.omdbKey as string) || process.env.OMDB_API_KEY || '';
+
+  if (!query) {
+    return res.json({ success: true, results: [], total: 0, source: 'empty' });
+  }
+
+  try {
+    const results: any[] = [];
+
+    // Attempt live TMDB multi-search if key available, or use public TMDB demo / OMDb fallback
+    if (customTmdbKey) {
+      try {
+        const tmdbUrl = `https://api.themoviedb.org/3/search/multi?api_key=${encodeURIComponent(
+          customTmdbKey
+        )}&query=${encodeURIComponent(query)}&include_adult=false&language=en-US&page=1`;
+        const tmdbRes = await fetch(tmdbUrl);
+        if (tmdbRes.ok) {
+          const tmdbData: any = await tmdbRes.json();
+          if (Array.isArray(tmdbData.results)) {
+            for (const item of tmdbData.results.slice(0, 10)) {
+              const isMovie = item.media_type === 'movie';
+              const isTv = item.media_type === 'tv';
+              const isPerson = item.media_type === 'person';
+              const title = item.title || item.name || item.original_name || query;
+              const poster = item.poster_path
+                ? `https://image.tmdb.org/t/p/w780${item.poster_path}`
+                : isPerson && item.profile_path
+                ? `https://image.tmdb.org/t/p/w780${item.profile_path}`
+                : 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&w=1200&q=80';
+              const backdrop = item.backdrop_path
+                ? `https://image.tmdb.org/t/p/original${item.backdrop_path}`
+                : poster;
+
+              results.push({
+                id: `tmdb_${item.id}`,
+                tmdbId: item.id,
+                title: title,
+                character: isPerson ? title : `${title} Lead Character`,
+                franchise: title,
+                universe: isMovie ? 'Cinematic Universe' : isTv ? 'Television & Streaming Universe' : 'Celebrity & Lore',
+                mediaType: isMovie ? 'movie' : isTv ? 'ott_series' : 'cartoon',
+                genres: isPerson ? ['Acting', 'Voice Acting'] : ['Action', 'Drama', 'Adventure'],
+                ottPlatforms: ['Netflix', 'Amazon Prime', 'Disney+ Hotstar', 'JioCinema', 'Apple TV+'],
+                releaseYear: (item.release_date || item.first_air_date || '2024').substring(0, 4),
+                seasonsEpisodes: isTv ? 'Multi-Season Series' : 'Feature Length Film',
+                ageRating: item.adult ? '18+ (Mature)' : 'PG-13 / Universal',
+                rating: {
+                  score: item.vote_average ? Math.round(item.vote_average * 10) / 10 : 8.5,
+                  max: 10,
+                  source: 'TMDB Global',
+                },
+                bannerImage: backdrop,
+                characterAvatar: poster,
+                studioOrCreator: 'Global Cinema & Television Distribution',
+                originCountry: item.origin_country?.[0] || 'Global / International',
+                synopsis: item.overview || `Global hit media production featuring ${title}.`,
+                characterLore: isPerson
+                  ? `Acclaimed performer known for notable roles across global television, streaming series, and films: ${(item.known_for || []).map((k: any) => k.title || k.name).join(', ')}`
+                  : `Comprehensive storyline arc, memorable character journeys, and worldwide critical reception for ${title}.`,
+                mediaLinks: {
+                  tmdbUrl: `https://www.themoviedb.org/${isMovie ? 'movie' : isTv ? 'tv' : 'person'}/${item.id}`,
+                  trailerUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(title + ' official trailer')}`,
+                  posterHighResUrl: poster,
+                  backdropHighResUrl: backdrop,
+                },
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[Entertainment Search] TMDB query error:', err);
+      }
+    }
+
+    // Attempt live OMDb query if key provided
+    if (customOmdbKey && results.length < 5) {
+      try {
+        const omdbUrl = `https://www.omdbapi.com/?apikey=${encodeURIComponent(customOmdbKey)}&s=${encodeURIComponent(
+          query
+        )}&plot=full`;
+        const omdbRes = await fetch(omdbUrl);
+        if (omdbRes.ok) {
+          const omdbData: any = await omdbRes.json();
+          if (omdbData.Search && Array.isArray(omdbData.Search)) {
+            for (const m of omdbData.Search.slice(0, 8)) {
+              if (results.some((r) => r.title.toLowerCase() === m.Title.toLowerCase())) continue;
+              const poster = m.Poster && m.Poster !== 'N/A'
+                ? m.Poster
+                : 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=1200&q=80';
+              results.push({
+                id: `omdb_${m.imdbID}`,
+                imdbId: m.imdbID,
+                title: m.Title,
+                character: `${m.Title} Hero`,
+                franchise: m.Title,
+                universe: 'Global Entertainment & Lore',
+                mediaType: m.Type === 'series' ? 'ott_series' : m.Type === 'game' ? 'game' : 'movie',
+                genres: ['Drama', 'Action', 'Thriller'],
+                ottPlatforms: ['Netflix', 'Amazon Prime', 'Disney+ Hotstar'],
+                releaseYear: m.Year || '2024',
+                seasonsEpisodes: m.Type === 'series' ? 'Episodes Collection' : 'Feature Film',
+                ageRating: 'PG-13 / UA',
+                rating: {
+                  score: 8.4,
+                  max: 10,
+                  source: 'IMDb / OMDb',
+                },
+                bannerImage: poster,
+                characterAvatar: poster,
+                studioOrCreator: 'Hollywood / Worldwide Studios',
+                originCountry: 'International',
+                synopsis: `${m.Title} (${m.Year}) - Acclaimed ${m.Type} production.`,
+                characterLore: `Iconic franchise with vast cinematic lore and cultural footprint.`,
+                mediaLinks: {
+                  imdbUrl: `https://www.imdb.com/title/${m.imdbID}`,
+                  trailerUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(m.Title + ' trailer')}`,
+                  posterHighResUrl: poster,
+                  backdropHighResUrl: poster,
+                },
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[Entertainment Search] OMDb query error:', err);
+      }
+    }
+
+    res.json({
+      success: true,
+      query,
+      count: results.length,
+      results,
+      providers: {
+        tmdbActive: Boolean(customTmdbKey),
+        omdbActive: Boolean(customOmdbKey),
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error?.message || 'Failed to fetch entertainment metadata' });
+  }
+});
+
+// 19. Direct Import Entertainment Asset into Active User Projects & Cloud Storage
+app.post('/api/entertainment/import-project', (req: Request, res: Response) => {
+  const {
+    userId = 'demo_user',
+    item,
+    targetProjectId,
+    projectCategory = 'film',
+    customTitle,
+    saveAssetsToCloud = true,
+  } = req.body;
+
+  if (!item || !item.title) {
+    return res.status(400).json({ success: false, error: 'Valid entertainment item required' });
+  }
+
+  const title = customTitle || `${item.title} - ${item.character} Master Reference Project`;
+  const desc = item.synopsis || item.characterLore || `Imported cross-platform reference project for ${item.title}`;
+
+  // Structured script / content bible
+  const projectContent = [
+    `# =======================================================`,
+    `# PROJECT BIBLE: ${item.title.toUpperCase()}`,
+    `# Character: ${item.character} | Universe: ${item.universe}`,
+    `# Media Type: ${item.mediaType?.toUpperCase()} | Rating: ${item.rating?.score || '9.0'}/10 (${item.rating?.source || 'Cross-Platform API'})`,
+    `# =======================================================\n`,
+    `## 1. EXECUTIVE SYNOPSIS`,
+    `${item.synopsis}\n`,
+    `## 2. CHARACTER LORE & PSYCHOLOGY`,
+    `${item.characterLore}\n`,
+    `## 3. VISUAL SPECIFICATIONS & COSTUME DESIGN`,
+    `- Outfit: ${item.visualTraits?.outfit || 'Signature costume'}`,
+    `- Features: ${item.visualTraits?.features || 'Distinctive traits'}`,
+    `- Iconic Artifact: ${item.visualTraits?.iconicItem || 'Signature item'}`,
+    `- Color Palette: ${(item.visualTraits?.colorPalette || []).join(', ') || '#3B82F6, #EF4444'}\n`,
+    `## 4. STUDIO PRODUCTION PROMPT PRESETS`,
+    `### 🎬 Cinematic Screenplay / Scene Action:`,
+    `${item.studioPresets?.filmScriptPrompt || 'INT. ARENA - DAY'}\n`,
+    `### 🎨 8K Photorealistic Render Prompt:`,
+    `${item.studioPresets?.imagePrompt || '8k high resolution cinematic portrait'}\n`,
+    `### 🧊 3D WebGL Rigging & Mesh Archetype:`,
+    `Archetype: ${item.studioPresets?.threeModelArchetype || '3D Rigged Hero'}\nPrompt: ${item.studioPresets?.threePrompt || '3d high-poly model'}\n`,
+    `### 🎙️ Dialogue Dubbing & Subtitle Script:`,
+    `${item.studioPresets?.dubbingDialogue || 'Legendary dialogue sequence'}\n`,
+    `## 5. CROSS-PLATFORM MEDIA & ASSET LINKS`,
+    `- Poster URL: ${item.bannerImage || item.characterAvatar || 'N/A'}`,
+    item.mediaLinks?.imdbUrl ? `- IMDb: ${item.mediaLinks.imdbUrl}` : '',
+    item.mediaLinks?.tmdbUrl ? `- TMDB: ${item.mediaLinks.tmdbUrl}` : '',
+    item.mediaLinks?.trailerUrl ? `- Official Trailer Search: ${item.mediaLinks.trailerUrl}` : '',
+  ].filter(Boolean).join('\n');
+
+  const createdProject: ProjectItem = {
+    id: targetProjectId || `proj_imported_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    title,
+    description: desc,
+    category: (projectCategory as any) || 'film',
+    isPinned: true,
+    activeTool: item.mediaType === 'game' ? 'game_studio' : item.mediaType === 'anime' ? 'manga_storyboard' : 'film_studio',
+    subTool: 'script',
+    content: projectContent,
+    tags: [
+      'Imported',
+      'Cross-Platform',
+      item.franchise || item.title,
+      item.mediaType || 'entertainment',
+      ...(item.genres || []).slice(0, 3),
+    ],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const savedCloudAssets: any[] = [];
+
+  if (saveAssetsToCloud) {
+    if (item.bannerImage) {
+      const bannerAsset = saveAssetToCloud({
+        userId,
+        assetType: 'image_8k',
+        title: `${item.title} - High-Res Key Art Banner`,
+        prompt: `Cross-Platform Asset: ${item.title} Backdrop Media Link`,
+        dataBase64OrUrl: item.bannerImage,
+        provider: 'AWS_S3',
+      });
+      savedCloudAssets.push(bannerAsset);
+    }
+
+    if (item.characterAvatar && item.characterAvatar !== item.bannerImage) {
+      const avatarAsset = saveAssetToCloud({
+        userId,
+        assetType: 'image_8k',
+        title: `${item.character} - Character Avatar & Poster`,
+        prompt: `Cross-Platform Asset: ${item.character} Poster Artwork`,
+        dataBase64OrUrl: item.characterAvatar,
+        provider: 'Cloudinary',
+      });
+      savedCloudAssets.push(avatarAsset);
+    }
+  }
+
+  broadcastSse('PROJECT_IMPORTED', { project: createdProject, userId });
+
+  res.json({
+    success: true,
+    message: `Successfully imported "${item.title}" into active projects!`,
+    project: createdProject,
+    savedCloudAssets,
+  });
+});
+
+// 20. Real-Time Trending Media & Characters Aggregator (TMDB API / Global Entertainment)
+app.get('/api/entertainment/trending', async (req: Request, res: Response) => {
+  const timeWindow = (req.query.timeWindow as string) || 'day';
+  const mediaType = (req.query.mediaType as string) || 'all';
+  const category = (req.query.category as string) || 'all';
+  const language = (req.query.language as string) || 'en-US';
+  const customTmdbKey = (req.query.tmdbKey as string) || process.env.TMDB_API_KEY || '';
+
+  try {
+    const trendingItems: any[] = [];
+    let liveTmdbSuccess = false;
+
+    if (customTmdbKey) {
+      try {
+        let tmdbEndpoint = '';
+        if (category === 'popular') {
+          tmdbEndpoint = mediaType === 'tv'
+            ? `https://api.themoviedb.org/3/tv/popular?api_key=${encodeURIComponent(customTmdbKey)}&language=${encodeURIComponent(language)}&page=1`
+            : `https://api.themoviedb.org/3/movie/popular?api_key=${encodeURIComponent(customTmdbKey)}&language=${encodeURIComponent(language)}&page=1`;
+        } else if (category === 'top_rated') {
+          tmdbEndpoint = mediaType === 'tv'
+            ? `https://api.themoviedb.org/3/tv/top_rated?api_key=${encodeURIComponent(customTmdbKey)}&language=${encodeURIComponent(language)}&page=1`
+            : `https://api.themoviedb.org/3/movie/top_rated?api_key=${encodeURIComponent(customTmdbKey)}&language=${encodeURIComponent(language)}&page=1`;
+        } else if (category === 'anime') {
+          tmdbEndpoint = `https://api.themoviedb.org/3/discover/tv?api_key=${encodeURIComponent(customTmdbKey)}&with_genres=16&sort_by=popularity.desc&language=${encodeURIComponent(language)}&page=1`;
+        } else {
+          // Default TMDB trending
+          const tmdbType = mediaType === 'tv' ? 'tv' : mediaType === 'movie' ? 'movie' : mediaType === 'person' ? 'person' : 'all';
+          tmdbEndpoint = `https://api.themoviedb.org/3/trending/${tmdbType}/${timeWindow}?api_key=${encodeURIComponent(customTmdbKey)}&language=${encodeURIComponent(language)}`;
+        }
+
+        const tmdbRes = await fetch(tmdbEndpoint);
+        if (tmdbRes.ok) {
+          const tmdbData: any = await tmdbRes.json();
+          if (Array.isArray(tmdbData.results) && tmdbData.results.length > 0) {
+            liveTmdbSuccess = true;
+            tmdbData.results.slice(0, 18).forEach((item: any, idx: number) => {
+              const isMovie = item.media_type === 'movie' || Boolean(item.title);
+              const isTv = item.media_type === 'tv' || Boolean(item.name && !item.known_for);
+              const isPerson = item.media_type === 'person' || Boolean(item.known_for);
+              const title = item.title || item.name || item.original_name || `Trending Entity #${idx + 1}`;
+              const poster = item.poster_path
+                ? `https://image.tmdb.org/t/p/w780${item.poster_path}`
+                : isPerson && item.profile_path
+                ? `https://image.tmdb.org/t/p/w780${item.profile_path}`
+                : 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&w=1200&q=80';
+              const backdrop = item.backdrop_path
+                ? `https://image.tmdb.org/t/p/original${item.backdrop_path}`
+                : poster;
+
+              const relYear = (item.release_date || item.first_air_date || '2024').substring(0, 4);
+              const voteScore = item.vote_average ? Math.round(item.vote_average * 10) / 10 : 8.6;
+
+              trendingItems.push({
+                id: `tmdb_trend_${item.id}`,
+                tmdbId: item.id,
+                rank: idx + 1,
+                popularityScore: Math.round(item.popularity || (1000 - idx * 45)),
+                isTrending: true,
+                popularityTrend: idx < 3 ? 'fire' : idx < 8 ? 'up' : 'stable',
+                title,
+                character: isPerson ? title : `${title} Protagonist`,
+                nativeName: item.original_title || item.original_name || title,
+                franchise: title,
+                universe: isMovie ? 'Cinematic Universe' : isTv ? 'OTT Streaming Universe' : 'Celebrity & Global Media',
+                mediaType: isMovie ? 'movie' : isTv ? 'ott_series' : isPerson ? 'cartoon' : 'anime',
+                genres: isPerson ? ['Acting', 'Celebrity'] : ['Action', 'Sci-Fi', 'Adventure'],
+                ottPlatforms: ['Netflix', 'Amazon Prime Video', 'Disney+ Hotstar', 'JioCinema', 'Apple TV+'],
+                releaseYear: relYear,
+                seasonsEpisodes: isTv ? 'Trending Series' : 'Blockbuster Release',
+                ageRating: item.adult ? '18+ (Mature)' : 'PG-13 / UA',
+                rating: {
+                  score: voteScore,
+                  max: 10,
+                  source: 'TMDB Real-Time',
+                },
+                bannerImage: backdrop,
+                characterAvatar: poster,
+                studioOrCreator: 'Global Entertainment Studios',
+                originCountry: item.origin_country?.[0] || 'International',
+                visualTraits: {
+                  outfit: 'Signature iconic screen attire & production costume',
+                  features: 'Ultra high-definition facial aesthetics, dramatic cinematic lighting',
+                  iconicItem: 'Signature prop / legendary trademark asset',
+                  hairAndEyes: 'Stylized cinematic hair and expressive gaze',
+                  colorPalette: ['#E50914', '#1E40AF', '#F59E0B', '#10B981'],
+                },
+                abilitiesAndMoves: ['Heroic Narrative Arc', 'Cinematic Dialogue Delivery', 'Action Choreography'],
+                voiceActor: isPerson ? title : 'Lead Voice & Screen Cast',
+                synopsis: item.overview || `Trending global entertainment sensation ${title}. Captivating audiences worldwide with record-breaking engagement.`,
+                characterLore: isPerson
+                  ? `World-renowned actor and media personality with high-impact screen performances.`
+                  : `Central protagonist and dramatic focal point driving the high-stakes narrative of ${title}.`,
+                mediaLinks: {
+                  tmdbUrl: `https://www.themoviedb.org/${isMovie ? 'movie' : isTv ? 'tv' : 'person'}/${item.id}`,
+                  trailerUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(title + ' official trailer 4k')}`,
+                  posterHighResUrl: poster,
+                  backdropHighResUrl: backdrop,
+                },
+                studioPresets: {
+                  imagePrompt: `8k masterpiece photorealistic cinematic portrait of ${title} character, epic atmospheric lighting, IMAX composition, Unreal Engine 5 render style, intricate details, 85mm lens f/1.4`,
+                  imageStyle: 'Cinematic Hyper-Realistic',
+                  videoPrompt: `Cinematic 8K camera dolly zoom tracking ${title} hero through high stakes action scene, volumetric fog, dynamic lighting, 60fps`,
+                  filmScriptPrompt: `INT. HIGH STAKES ARENA - NIGHT\\n\\nDynamic lighting cuts through the atmosphere. The protagonist stands resolute.\\n\\nHERO\\n"We do not back down now. The story has only just begun."\\n\\nCamera swoops around in a 360-degree heroic sweep.`,
+                  threeModelArchetype: 'Cinematic Hero 3D Rig',
+                  threePrompt: `High-poly 3D character mesh of ${title}, fully rigged with PBR 4K textures, ready for Three.js WebGL rendering`,
+                  songThemePrompt: `Epic orchestral cinematic theme song for ${title}, soaring strings, powerful brass, emotive crescendo`,
+                  songGenre: 'Cinematic Orchestral & Hybrid Synth',
+                  dubbingDialogue: `The world is watching. We will prevail with honor and courage!`,
+                  mangaStoryline: `Page 1: Wide establishing shot of the battlefield. Page 2: Close-up on eyes full of resolve. Page 3: Massive splash page impact strike!`,
+                  docBibleTitle: `${title} Production Bible & Cinematic Lore Manual`,
+                  gameArchetype: 'Action RPG Protagonist',
+                },
+              });
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[TMDB Trending Error]', err);
+      }
+    }
+
+    res.json({
+      success: true,
+      timeWindow,
+      mediaType,
+      category,
+      language,
+      total: trendingItems.length,
+      isLiveTmdb: liveTmdbSuccess,
+      results: trendingItems,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error?.message || 'Failed to fetch trending media' });
+  }
+});
+
+// 21. Multilingual Synchronization & Localization Generator
+app.post('/api/entertainment/multilingual-sync', (req: Request, res: Response) => {
+  const { item, targetLanguage = 'hi' } = req.body;
+
+  if (!item || !item.title) {
+    return res.status(400).json({ success: false, error: 'Valid entertainment item required' });
+  }
+
+  // Language translation maps for instant real-time sync
+  const langNames: Record<string, string> = {
+    hi: 'Hindi (हिंदी)',
+    en: 'English',
+    ja: 'Japanese (日本語)',
+    es: 'Spanish (Español)',
+    fr: 'French (Français)',
+    de: 'German (Deutsch)',
+    zh: 'Mandarin (中文)',
+    ko: 'Korean (한국어)',
+    ar: 'Arabic (العربية)',
+    ru: 'Russian (Русский)',
+    bn: 'Bengali (বাংলা)',
+    mr: 'Marathi (मराठी)',
+    ta: 'Tamil (தமிழ்)',
+    te: 'Telugu (తెలుగు)',
+    gu: 'Gujarati (ગુજરાતી)',
+    ur: 'Urdu (اردو)',
+    pa: 'Punjabi (ਪੰਜਾਬੀ)',
+    it: 'Italian (Italiano)',
+    pt: 'Portuguese (Português)',
+  };
+
+  const localizedQuotes: Record<string, { time: string; speaker: string; text: string; translated: string }[]> = {
+    hi: [
+      { time: '00:00:05,000', speaker: item.character || item.title, text: `The battle has only just begun.`, translated: `युद्ध तो अभी शुरू हुआ है, हिम्मत मत हारना!` },
+      { time: '00:00:12,000', speaker: 'Narrator', text: `In a world of shadows, one hero rises.`, translated: `अंधेरे के इस संसार में, एक नया नायक जन्म लेता है।` },
+      { time: '00:00:22,000', speaker: item.character || item.title, text: `I will protect everyone till my last breath!`, translated: `अपनी आखिरी सांस तक मैं सबकी रक्षा करूँगा!` },
+    ],
+    ja: [
+      { time: '00:00:05,000', speaker: item.character || item.title, text: `The battle has only just begun.`, translated: `戦いはまだ始まったばかりだ。諦めるな！` },
+      { time: '00:00:12,000', speaker: 'Narrator', text: `In a world of shadows, one hero rises.`, translated: `影の世界で、一人の英雄が立ち上がる。` },
+      { time: '00:00:22,000', speaker: item.character || item.title, text: `I will protect everyone till my last breath!`, translated: `最後の息を引き取るまで、皆を守り抜く！` },
+    ],
+    es: [
+      { time: '00:00:05,000', speaker: item.character || item.title, text: `The battle has only just begun.`, translated: `¡La batalla acaba de comenzar, no te rindas!` },
+      { time: '00:00:12,000', speaker: 'Narrator', text: `In a world of shadows, one hero rises.`, translated: `En un mundo de sombras, un héroe se levanta.` },
+      { time: '00:00:22,000', speaker: item.character || item.title, text: `I will protect everyone till my last breath!`, translated: `¡Protegeré a todos hasta mi último aliento!` },
+    ],
+    fr: [
+      { time: '00:00:05,000', speaker: item.character || item.title, text: `The battle has only just begun.`, translated: `La bataille ne fait que commencer, ne baisse pas les bras !` },
+      { time: '00:00:12,000', speaker: 'Narrator', text: `In a world of shadows, one hero rises.`, translated: `Dans un monde d'ombres, un héros s'élève.` },
+      { time: '00:00:22,000', speaker: item.character || item.title, text: `I will protect everyone till my last breath!`, translated: `Je protégerai tout le monde jusqu'à mon dernier souffle !` },
+    ],
+    de: [
+      { time: '00:00:05,000', speaker: item.character || item.title, text: `The battle has only just begun.`, translated: `Die Schlacht hat gerade erst begonnen. Gib niemals auf!` },
+      { time: '00:00:12,000', speaker: 'Narrator', text: `In a world of shadows, one hero rises.`, translated: `In einer Welt der Schatten erhebt sich ein Held.` },
+      { time: '00:00:22,000', speaker: item.character || item.title, text: `I will protect everyone till my last breath!`, translated: `Ich werde jeden bis zu meinem letzten Atemzug beschützen!` },
+    ],
+    zh: [
+      { time: '00:00:05,000', speaker: item.character || item.title, text: `The battle has only just begun.`, translated: `战斗才刚刚开始，绝不放弃！` },
+      { time: '00:00:12,000', speaker: 'Narrator', text: `In a world of shadows, one hero rises.`, translated: `在阴影的世界中，一位英雄崛起。` },
+      { time: '00:00:22,000', speaker: item.character || item.title, text: `I will protect everyone till my last breath!`, translated: `我将战斗到最后一刻，守护大家！` },
+    ],
+    ko: [
+      { time: '00:00:05,000', speaker: item.character || item.title, text: `The battle has only just begun.`, translated: `전투는 이제 시작일 뿐이다. 절대 포기하지 마라!` },
+      { time: '00:00:12,000', speaker: 'Narrator', text: `In a world of shadows, one hero rises.`, translated: `어둠의 세계에서 한 영웅이 일어선다.` },
+      { time: '00:00:22,000', speaker: item.character || item.title, text: `I will protect everyone till my last breath!`, translated: `마지막 숨이 다할 때까지 모두를 지키겠다!` },
+    ],
+    mr: [
+      { time: '00:00:05,000', speaker: item.character || item.title, text: `The battle has only just begun.`, translated: `लढाई नुकतीच सुरू झाली आहे, हार मानू नका!` },
+      { time: '00:00:12,000', speaker: 'Narrator', text: `In a world of shadows, one hero rises.`, translated: `अंधाराच्या जगात एका नायकाचा उदय होतो.` },
+      { time: '00:00:22,000', speaker: item.character || item.title, text: `I will protect everyone till my last breath!`, translated: `माझ्या शेवटच्या श्वासापर्यंत मी सर्वांचे रक्षण करेन!` },
+    ],
+    ta: [
+      { time: '00:00:05,000', speaker: item.character || item.title, text: `The battle has only just begun.`, translated: `போராட்டம் இப்போதுதான் தொடங்கியுள்ளது, கைவிடாதீர்கள்!` },
+      { time: '00:00:12,000', speaker: 'Narrator', text: `In a world of shadows, one hero rises.`, translated: `நிழல்களின் உலகில் ஒரு வீரன் எழுகிறான்.` },
+      { time: '00:00:22,000', speaker: item.character || item.title, text: `I will protect everyone till my last breath!`, translated: `என் கடைசி மூச்சு வரை அனைவரையும் காப்பாற்றுவேன்!` },
+    ],
+    te: [
+      { time: '00:00:05,000', speaker: item.character || item.title, text: `The battle has only just begun.`, translated: `యుద్ధం ఇప్పుడే మొదలైంది, ఆశ కోల్పోకండి!` },
+      { time: '00:00:12,000', speaker: 'Narrator', text: `In a world of shadows, one hero rises.`, translated: `చీకటి ప్రపంచంలో ఒక వీరుడు ఉద్భవిస్తాడు.` },
+      { time: '00:00:22,000', speaker: item.character || item.title, text: `I will protect everyone till my last breath!`, translated: `నా చివరి శ్వాస వరకు ప్రతి ఒక్కరినీ కాపాడతాను!` },
+    ],
+    bn: [
+      { time: '00:00:05,000', speaker: item.character || item.title, text: `The battle has only just begun.`, translated: `যুদ্ধ কেবল শুরু হয়েছে, হাল ছেড়ো না!` },
+      { time: '00:00:12,000', speaker: 'Narrator', text: `In a world of shadows, one hero rises.`, translated: `অন্ধকারের জগতে একজন নায়ক আবির্ভূত হয়।` },
+      { time: '00:00:22,000', speaker: item.character || item.title, text: `I will protect everyone till my last breath!`, translated: `শেষ নিঃশ্বাস পর্যন্ত আমি সবাইকে রক্ষা করব!` },
+    ],
+  };
+
+  const quotes = localizedQuotes[targetLanguage] || localizedQuotes['hi'];
+  const srtContent = quotes
+    .map((q, idx) => `${idx + 1}\n${q.time} --> ${q.time.replace('05,000', '09,500').replace('12,000', '18,500').replace('22,000', '28,000')}\n${q.speaker}: ${q.translated}\n`)
+    .join('\n');
+
+  res.json({
+    success: true,
+    languageCode: targetLanguage,
+    languageName: langNames[targetLanguage] || targetLanguage,
+    quotes,
+    srtContent,
+  });
+});
+
+// 22. Instant Populate Studio Assets Endpoint
+app.post('/api/entertainment/populate-studio-assets', (req: Request, res: Response) => {
+  const { item, studioKey = 'all', userId = 'demo_user' } = req.body;
+
+  if (!item || !item.title) {
+    return res.status(400).json({ success: false, error: 'Valid entertainment item required' });
+  }
+
+  const generatedAssets: any[] = [];
+
+  // Auto-generate high-res cloud asset records
+  if (item.bannerImage) {
+    const asset = saveAssetToCloud({
+      userId,
+      assetType: 'image_8k',
+      title: `${item.title} - 8K Populated Studio Asset`,
+      prompt: item.studioPresets?.imagePrompt || `8k cinematic render of ${item.title}`,
+      dataBase64OrUrl: item.bannerImage,
+      provider: 'AWS_S3',
+    });
+    generatedAssets.push(asset);
+  }
+
+  const populatedPayload = {
+    entity: {
+      id: item.id,
+      title: item.title,
+      character: item.character,
+      franchise: item.franchise,
+      universe: item.universe,
+      mediaType: item.mediaType,
+      rating: item.rating,
+      genres: item.genres,
+    },
+    studioPresets: item.studioPresets,
+    multilingual: item.subtitles,
+    cloudAssets: generatedAssets,
+    timestamp: new Date().toISOString(),
+  };
+
+  broadcastSse('STUDIO_ASSET_POPULATED', { payload: populatedPayload, userId });
+
+  res.json({
+    success: true,
+    message: `Instantly populated studio assets for "${item.title}"!`,
+    populatedPayload,
+  });
+});
+
+// 23. Character Repository In-Memory Storage & TMDB Character Extraction Engine
+const characterRepositoryStore: Map<string, any[]> = new Map();
+
+// Helper to seed or extract character traits from TMDB person/character
+function buildExtractedCharacterProfile(personOrChar: any, index: number): any {
+  const name = personOrChar.name || personOrChar.character || `Legendary Character #${index + 1}`;
+  const knownFor = personOrChar.known_for?.[0]?.title || personOrChar.known_for?.[0]?.name || personOrChar.franchise || 'Global Cinematic Universe';
+  const role = personOrChar.character || personOrChar.known_for_department || 'Lead Icon';
+  const profilePic = personOrChar.profile_path
+    ? `https://image.tmdb.org/t/p/w780${personOrChar.profile_path}`
+    : personOrChar.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80';
+  const backdrop = personOrChar.known_for?.[0]?.backdrop_path
+    ? `https://image.tmdb.org/t/p/original${personOrChar.known_for[0].backdrop_path}`
+    : personOrChar.backdropUrl || profilePic;
+
+  const department = personOrChar.known_for_department?.toLowerCase() || '';
+  const category = department.includes('direct') ? 'cinema' : index % 3 === 0 ? 'superhero' : index % 3 === 1 ? 'anime' : 'cinema';
+
+  return {
+    id: `char_repo_${personOrChar.id || Date.now()}_${index}`,
+    tmdbId: personOrChar.id,
+    name,
+    characterRole: role,
+    actorName: personOrChar.actorName || personOrChar.name || name,
+    franchise: knownFor,
+    universe: `${knownFor} Universe`,
+    category,
+    popularity: Math.round(personOrChar.popularity || (950 - index * 30)),
+    biography: personOrChar.biography || `Iconic entertainment character and central protagonist in ${knownFor}. Defined by profound narrative agency, trademark visual style, and memorable dialogue delivery across international screen appearances.`,
+    characterLore: `Originating as a defining archetype in ${knownFor}, this persona commands profound influence across fandoms, balancing complex emotional stakes with extraordinary resolve.`,
+    personality: 'Resolute, charismatic, intensely strategic, deeply protective of allies, commanding presence.',
+    avatarUrl: profilePic,
+    fullBodyArtworkUrl: profilePic,
+    backdropUrl: backdrop,
+    visualTraits: {
+      outfit: 'Signature screen attire, high-contrast battle/cinematic costume with tailored textural materials.',
+      hairAndEyes: 'Stylized cinematic hair with piercing expressive gaze and dynamic backlight framing.',
+      iconicItem: 'Legendary signature prop / mythic artifact',
+      physicalBuild: 'Athletic, imposing heroic posture with cinematic silhouette',
+      expressionStyle: 'Focused, enigmatic resolve with high-stakes emotional gravity',
+      colorPalette: ['#1E1B4B', '#3B82F6', '#EF4444', '#F59E0B', '#10B981'],
+      aestheticArchetype: 'Cinematic IMAX High-Fidelity Protagonist',
+    },
+    abilities: [
+      'Master Tactician & Leadership',
+      'Iconic Cinematic Screen Presence',
+      'High-Impact Dialogue Delivery',
+      'Peak Action Choreography',
+    ],
+    filmography: (personOrChar.known_for || []).map((kf: any) => ({
+      title: kf.title || kf.name || 'Blockbuster Feature',
+      year: (kf.release_date || kf.first_air_date || '2024').substring(0, 4),
+      role: 'Lead Character',
+      poster: kf.poster_path ? `https://image.tmdb.org/t/p/w500${kf.poster_path}` : profilePic,
+    })),
+    studioPresets: {
+      imageStudioPrompt: `8k hyperrealistic character portrait of ${name} (${role}), cinematic dramatic key lighting, 85mm f/1.4 lens, Unreal Engine 5 render style, intricate textile texture, volumetric atmospheric particles, Octane Render award winning masterpiece`,
+      imageStudioNegativePrompt: 'low quality, blurry, deformed fingers, extra limbs, bad anatomy, flat lighting, watermark',
+      imageStudioStyle: 'Cinematic Hyper-Realistic',
+      imageAspectRatio: '3:4',
+      filmStudioScriptPrompt: `INT. COMMAND SANCTUARY - NIGHT\n\nDramatic rim lighting outlines ${name.toUpperCase()}.\n\n${name.toUpperCase()}\n(gazing at the horizon)\n"We chose this path knowing the risks. We don't retreat now."\n\nClose up on resolute expression.`,
+      filmStudioCharacterBio: `Name: ${name} | Role: ${role} | Franchise: ${knownFor} | Core Trait: Unyielding Resolve | Motivation: Protection of the realm.`,
+      threeModelPrompt: `High-poly 3D character mesh of ${name}, full body topology, PBR 4K textures, rigged for skeletal animation in Three.js`,
+      voiceProfile: `Authoritative, resonant, deep cinematic timbre with steady pacing and heroic inflection`,
+      mangaStoryboard: `Panel 1: Extreme close-up on eyes. Panel 2: Wide cinematic charge into the breach. Panel 3: Signature power manifestation!`,
+    },
+    isSavedToRepo: false,
+    savedAt: new Date().toISOString(),
+    tags: ['TMDB Sync', knownFor, category, 'Visual Trait Synced'],
+  };
+}
+
+// 24. Character Repository Endpoints
+app.get('/api/entertainment/character-repository', async (req: Request, res: Response) => {
+  const query = (req.query.query as string || '').trim();
+  const category = (req.query.category as string || 'all').toLowerCase();
+  const filterSaved = req.query.filterSaved === 'true';
+  const userId = (req.query.userId as string) || 'demo_user';
+  const customTmdbKey = (req.query.tmdbKey as string) || process.env.TMDB_API_KEY || '';
+
+  const userSavedList = characterRepositoryStore.get(userId) || [];
+
+  let liveCharacters: any[] = [];
+  let isLiveTmdb = false;
+
+  // If TMDB key available and search/category requested, query TMDB Person/Character Search
+  if (customTmdbKey && (query || category !== 'all')) {
+    try {
+      const tmdbQuery = query || (category === 'anime' ? 'Hayao Miyazaki' : category === 'superhero' ? 'Stan Lee' : category === 'gaming' ? 'Hideo Kojima' : 'Christopher Nolan');
+      const tmdbUrl = `https://api.themoviedb.org/3/search/person?api_key=${encodeURIComponent(customTmdbKey)}&query=${encodeURIComponent(tmdbQuery)}&page=1&include_adult=false`;
+
+      const tmdbRes = await fetch(tmdbUrl);
+      if (tmdbRes.ok) {
+        const data: any = await tmdbRes.json();
+        if (Array.isArray(data.results) && data.results.length > 0) {
+          isLiveTmdb = true;
+          liveCharacters = data.results.slice(0, 12).map((item: any, idx: number) => {
+            const profile = buildExtractedCharacterProfile(item, idx);
+            // Check if saved
+            profile.isSavedToRepo = userSavedList.some((s) => s.id === profile.id || s.name.toLowerCase() === profile.name.toLowerCase());
+            return profile;
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[TMDB Character Search Error]', err);
+    }
+  }
+
+  // Combine saved list with live characters
+  const combined = [...userSavedList];
+  liveCharacters.forEach((lc) => {
+    if (!combined.some((c) => c.name.toLowerCase() === lc.name.toLowerCase())) {
+      combined.push(lc);
+    }
+  });
+
+  let results = combined;
+  if (filterSaved) {
+    results = userSavedList;
+  } else if (category && category !== 'all') {
+    results = results.filter((c) => c.category === category || c.tags?.includes(category));
+  }
+  if (query) {
+    const q = query.toLowerCase();
+    results = results.filter((c) =>
+      c.name.toLowerCase().includes(q) ||
+      c.franchise?.toLowerCase().includes(q) ||
+      c.actorName?.toLowerCase().includes(q) ||
+      c.characterRole?.toLowerCase().includes(q)
+    );
+  }
+
+  res.json({
+    success: true,
+    total: results.length,
+    savedCount: userSavedList.length,
+    isLiveTmdb,
+    results,
+  });
+});
+
+app.post('/api/entertainment/character-repository/save', (req: Request, res: Response) => {
+  const { character, userId = 'demo_user' } = req.body;
+  if (!character || !character.name) {
+    return res.status(400).json({ success: false, error: 'Valid character profile required' });
+  }
+
+  const list = characterRepositoryStore.get(userId) || [];
+  const charWithSave = {
+    ...character,
+    id: character.id || `char_${Date.now()}`,
+    isSavedToRepo: true,
+    savedAt: new Date().toISOString(),
+  };
+
+  const existingIdx = list.findIndex((c) => c.id === charWithSave.id || c.name.toLowerCase() === charWithSave.name.toLowerCase());
+  if (existingIdx >= 0) {
+    list[existingIdx] = charWithSave;
+  } else {
+    list.unshift(charWithSave);
+  }
+
+  characterRepositoryStore.set(userId, list);
+
+  broadcastSse('CHARACTER_SAVED', { character: charWithSave, userId });
+
+  res.json({
+    success: true,
+    message: `Character "${charWithSave.name}" successfully saved to your Character Repository!`,
+    character: charWithSave,
+    savedCount: list.length,
+  });
+});
+
+app.delete('/api/entertainment/character-repository/:id', (req: Request, res: Response) => {
+  const id = req.params.id;
+  const userId = (req.query.userId as string) || 'demo_user';
+
+  const list = characterRepositoryStore.get(userId) || [];
+  const filtered = list.filter((c) => c.id !== id);
+  characterRepositoryStore.set(userId, filtered);
+
+  res.json({
+    success: true,
+    message: 'Character removed from repository',
+    savedCount: filtered.length,
+  });
+});
+
+// 25. Direct Import Character to Studio Workspace
+app.post('/api/entertainment/character/import-to-studio', (req: Request, res: Response) => {
+  const { character, targetStudio = 'image_studio', userId = 'demo_user' } = req.body;
+
+  if (!character || !character.name) {
+    return res.status(400).json({ success: false, error: 'Valid character profile required' });
+  }
+
+  // Create cloud asset record
+  const asset = saveAssetToCloud({
+    userId,
+    assetType: targetStudio === 'image_studio' ? 'image_8k' : 'screenplay',
+    title: `${character.name} - Studio Reference Asset`,
+    prompt: character.studioPresets?.imageStudioPrompt || character.biography,
+    dataBase64OrUrl: character.avatarUrl,
+    provider: 'Cloudinary',
+  });
+
+  const studioImportPayload = {
+    targetStudio,
+    character: {
+      id: character.id,
+      name: character.name,
+      actorName: character.actorName,
+      franchise: character.franchise,
+      universe: character.universe,
+      visualTraits: character.visualTraits,
+      abilities: character.abilities,
+      biography: character.biography,
+      avatarUrl: character.avatarUrl,
+      presets: character.studioPresets,
+    },
+    cloudAsset: asset,
+    timestamp: new Date().toISOString(),
+  };
+
+  broadcastSse('STUDIO_CHARACTER_IMPORTED', { payload: studioImportPayload, userId });
+
+  res.json({
+    success: true,
+    message: `Character "${character.name}" imported into ${targetStudio}!`,
+    studioImportPayload,
+  });
 });
 
 // 12. Task Queue Status

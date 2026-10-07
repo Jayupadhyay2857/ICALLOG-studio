@@ -131,3 +131,18 @@ export interface ChatMessage {
   codeSnippet?: string;
   timestamp: string;
 }
+
+export interface ProjectItem {
+  id: string;
+  title: string;
+  description: string;
+  category: 'film' | 'music' | 'office' | 'design' | '3d' | 'video' | 'general';
+  isPinned: boolean;
+  activeTool: string;
+  subTool?: string;
+  content?: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+

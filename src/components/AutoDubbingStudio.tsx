@@ -69,12 +69,53 @@ export const AutoDubbingStudio: React.FC<AutoDubbingStudioProps> = ({ user, onNo
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [audioTrackMode, setAudioTrackMode] = useState<'dubbed' | 'original'>('dubbed');
   const [subtitlesEnabled, setSubtitlesEnabled] = useState<boolean>(true);
+  const [activeReferenceCharacter, setActiveReferenceCharacter] = useState<string | null>(null);
+  const [customSrtContent, setCustomSrtContent] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Mock generated subtitles based on target language
+  // Listen for global entertainment character references & subtitles
+  React.useEffect(() => {
+    try {
+      const storedRef = localStorage.getItem('icallog_entertainment_reference');
+      if (storedRef) {
+        const item = JSON.parse(storedRef);
+        if (item?.character) {
+          setActiveReferenceCharacter(item.character);
+          setVideoTitle(`${item.character} - ${item.title}`);
+          const track = item.subtitles?.[targetLang] || item.subtitles?.['hi'] || item.subtitles?.['en'];
+          if (track?.fullSrt || track?.quotes) {
+            setCustomSrtContent(track.fullSrt || track.quotes.map((q: any, i: number) => `${i+1}\n00:00:0${i*3},000 --> 00:00:0${i*3+2},500\n[${q.speaker}] ${q.translated || q.text}`).join('\n\n'));
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    const handleApplyReference = (e: Event) => {
+      const custom = e as CustomEvent<{ character?: string; title?: string; subtitles?: Record<string, any> }>;
+      if (custom.detail?.character) {
+        setActiveReferenceCharacter(custom.detail.character);
+        setVideoTitle(`${custom.detail.character} - ${custom.detail.title || 'Universe'}`);
+        const track = custom.detail.subtitles?.[targetLang] || custom.detail.subtitles?.['hi'] || custom.detail.subtitles?.['en'];
+        if (track) {
+          setCustomSrtContent(track.fullSrt || track.quotes?.map((q: any, i: number) => `${i+1}\n00:00:0${i*3},000 --> 00:00:0${i*3+2},500\n[${q.speaker}] ${q.translated || q.text}`).join('\n\n'));
+        }
+        onNotify('Reference Injected', `Loaded ${custom.detail.character} dialogue & multi-language subtitles!`, 'success');
+      }
+    };
+
+    window.addEventListener('icallog_apply_entertainment_reference', handleApplyReference);
+    return () => window.removeEventListener('icallog_apply_entertainment_reference', handleApplyReference);
+  }, [targetLang, onNotify]);
+
+  // Mock generated subtitles based on target language or custom reference
   const getSubtitlesSample = (langCode: string) => {
+    if (customSrtContent) {
+      return customSrtContent;
+    }
     switch (langCode) {
       case 'hi':
         return `1\n00:00:01,000 --> 00:00:03,500\nनमस्ते दोस्तों! iCALLOG AI स्टूडियो में आपका स्वागत है।\n\n2\n00:00:04,000 --> 00:00:07,200\nअब आप अपनी आवाज़ और वीडियो को 18+ भाषाओं में तुरंत डब कर सकते हैं!\n\n3\n00:00:08,000 --> 00:00:11,500\nसिनेमैटिक 60fps और परफेक्ट लिप-सिंक के साथ दुनिया भर में छा जाइए।`;
@@ -164,9 +205,17 @@ export const AutoDubbingStudio: React.FC<AutoDubbingStudioProps> = ({ user, onNo
                 <span className="px-3 py-0.5 rounded-full text-xs font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-400/40">
                   18+ World Languages • 60fps Lip-Sync
                 </span>
+                {activeReferenceCharacter && (
+                  <span className="px-3 py-0.5 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-emerald-400" />
+                    Lore Active: {activeReferenceCharacter}
+                  </span>
+                )}
               </div>
               <p className="text-xs sm:text-sm text-slate-300 font-mono mt-1">
-                Translate, voice-clone, and dub videos into Hindi, English, Spanish, Japanese & more with emotion matching.
+                {activeReferenceCharacter
+                  ? `Active Lore Dialogue & Subtitles Loaded for ${activeReferenceCharacter}. Ready to synthesize in ${currentLangObj.name}!`
+                  : 'Translate, voice-clone, and dub videos into Hindi, English, Spanish, Japanese & more with emotion matching.'}
               </p>
             </div>
           </div>
