@@ -23,6 +23,7 @@ import {
   Upload,
   FileUp,
   RefreshCw,
+  Zap,
 } from 'lucide-react';
 import { triggerFilmScript, triggerFilmDirection, enhancePrompt } from '../lib/api.ts';
 import { UserProfile } from '../types.ts';
@@ -328,6 +329,47 @@ Access Granted. Master Protocol V18 Initialized.`);
     }
   };
 
+  // 1-Click: Enhance Logline AND Immediately Format Screenplay ("Maal Tayyar")
+  const handleEnhanceAndGenerateScriptMaal = async () => {
+    if (!logline.trim()) return;
+    try {
+      setIsEnhancingLogline(true);
+      setIsGeneratingScript(true);
+      onNotify('1-Click Screenplay Master', 'Premise enhance karke turant full screenplay format ho rahi hai...', 'info');
+
+      let targetLogline = logline;
+      try {
+        const res = await enhancePrompt(logline, 'film');
+        if (res?.enhancedPrompt) {
+          targetLogline = res.enhancedPrompt;
+          setLogline(targetLogline);
+        }
+      } catch {}
+      setIsEnhancingLogline(false);
+
+      const res = await triggerFilmScript({
+        title: scriptTitle,
+        genre,
+        logline: targetLogline,
+        characters,
+        tone,
+        sceneCount,
+        userId: user?.id,
+      });
+
+      if (res.script && res.script.screenplay) {
+        setGeneratedScript(res.script.screenplay);
+      }
+      onNotify('Screenplay Formatted!', `Hollywood screenplay for "${scriptTitle}" generated successfully!`, 'success');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Screenplay generation failed';
+      onNotify('Script Generation Error', msg, 'error');
+    } finally {
+      setIsEnhancingLogline(false);
+      setIsGeneratingScript(false);
+    }
+  };
+
   // Handle Script Generation
   const handleGenerateScript = async () => {
     try {
@@ -622,17 +664,30 @@ Access Granted. Master Protocol V18 Initialized.`);
 
               {/* Logline */}
               <div>
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
                   <label className="text-xs text-slate-300 font-semibold">Logline / Core Premise</label>
-                  <button
-                    type="button"
-                    disabled={isEnhancingLogline || !logline.trim()}
-                    onClick={handleEnhanceLogline}
-                    className="px-2.5 py-0.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/40 text-[11px] font-bold flex items-center gap-1 transition-all disabled:opacity-50"
-                  >
-                    <Sparkles className={`w-3 h-3 ${isEnhancingLogline ? 'animate-spin' : ''}`} />
-                    <span>{isEnhancingLogline ? 'Enhancing...' : '✨ Enhance AI (बूस्ट करें)'}</span>
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={isEnhancingLogline || !logline.trim()}
+                      onClick={handleEnhanceLogline}
+                      className="px-2.5 py-0.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/40 text-[11px] font-bold flex items-center gap-1 transition-all disabled:opacity-50"
+                      title="Sirf logline text enhance karein"
+                    >
+                      <Sparkles className={`w-3 h-3 ${isEnhancingLogline ? 'animate-spin' : ''}`} />
+                      <span>{isEnhancingLogline ? 'Enhancing...' : '1. Enhance'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isEnhancingLogline || isGeneratingScript || !logline.trim()}
+                      onClick={handleEnhanceAndGenerateScriptMaal}
+                      className="px-2.5 py-0.5 rounded-lg bg-gradient-to-r from-amber-400 via-pink-400 to-cyan-300 hover:brightness-110 text-slate-950 text-[11px] font-black flex items-center gap-1 transition-all hover:scale-105 disabled:opacity-50 cursor-pointer shadow-sm"
+                      title="Logline enhance karein aur turant full screenplay format karein"
+                    >
+                      <Zap className="w-3 h-3 fill-current text-slate-950" />
+                      <span>⚡ Enhance & Format Screenplay</span>
+                    </button>
+                  </div>
                 </div>
                 <textarea
                   rows={3}

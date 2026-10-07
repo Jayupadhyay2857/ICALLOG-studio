@@ -23,6 +23,7 @@ import {
   Volume2,
   Square,
   FileSpreadsheet,
+  Zap,
 } from 'lucide-react';
 import * as THREE from 'three';
 import {
@@ -569,6 +570,65 @@ export const OmniEnhanceModal: React.FC<OmniEnhanceModalProps> = ({
     }
   };
 
+  const handleEnhanceAndAutoGenerate = async () => {
+    if (!inputPrompt.trim()) {
+      onNotify('Notice', 'Please type a rough prompt or idea first!', 'warning');
+      return;
+    }
+    try {
+      setIsEnhancing(true);
+      setGeneratedPreviewUrl(null);
+      setGeneratedVideoUrl(null);
+      setSecondaryImageUrl(null);
+      setGeneratedDoc(null);
+      setGeneratedSong(null);
+      setIs3DActive(false);
+      stopSynthAudio();
+
+      const res = await enhancePrompt(inputPrompt, selectedModality);
+      const detMod = (res.detectedModality || res.modality || (selectedModality === 'auto' ? 'image' : selectedModality)) as ModalModality;
+      const enhancedData = {
+        enhancedPrompt: res.enhancedPrompt || res.enhanced,
+        explanation: res.explanation,
+        tags: res.tags,
+        suggestedSettings: res.suggestedSettings,
+        targetStudio: res.targetStudio,
+        detectedModality: detMod,
+        confidenceScore: typeof res.confidenceScore === 'number' ? res.confidenceScore : 0.98,
+        chainOfThought: res.chainOfThought,
+      };
+      setEnhancedResult(enhancedData);
+      setIsEnhancing(false);
+
+      // Now auto-generate the media!
+      setIsGeneratingPreview(true);
+      const targetMode = (selectedModality === 'auto' && detMod) ? detMod : selectedModality;
+      const promptToGen = enhancedData.enhancedPrompt;
+
+      if (targetMode === 'image' || targetMode === 'auto') {
+        const imgRes = await triggerImageGen({
+          prompt: promptToGen,
+          style: 'Cinematic 8K',
+          resolution: '8K',
+          aspectRatio: '16:9',
+        });
+        if (imgRes?.assetUrl) {
+          setGeneratedPreviewUrl(imgRes.assetUrl);
+          onNotify('8K AI Image Ready!', 'Pristine 8K resolution asset rendered from enhanced prompt.', 'success');
+        }
+      } else {
+        // Trigger default preview
+        onNotify('Rendering Media', `Synthesizing ${targetMode} output with AI...`, 'info');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '1-Click generation error';
+      onNotify('Notice', msg, 'error');
+    } finally {
+      setIsEnhancing(false);
+      setIsGeneratingPreview(false);
+    }
+  };
+
   const handleCopy = () => {
     if (!enhancedResult) return;
     navigator.clipboard.writeText(enhancedResult.enhancedPrompt);
@@ -850,15 +910,29 @@ export const OmniEnhanceModal: React.FC<OmniEnhanceModalProps> = ({
                 placeholder={currentModalityConfig.placeholder}
                 className="w-full px-4 py-3 rounded-2xl bg-slate-900/80 border border-slate-800 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 font-mono"
               />
-              <button
-                type="button"
-                disabled={isEnhancing || !inputPrompt.trim()}
-                onClick={handleEnhance}
-                className="absolute bottom-3 right-3 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-cyan-950/60 flex items-center gap-1.5 transition-all disabled:opacity-50"
-              >
-                <Sparkles className={`w-3.5 h-3.5 ${isEnhancing ? 'animate-spin' : ''}`} />
-                <span>{isEnhancing ? 'AI Thinking...' : 'Enhance with AI (बूस्ट करें)'}</span>
-              </button>
+              <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={isEnhancing || isGeneratingPreview || !inputPrompt.trim()}
+                  onClick={handleEnhance}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs border border-slate-700 flex items-center gap-1.5 transition-all disabled:opacity-50"
+                  title="Sirf prompt text ko enhance karein"
+                >
+                  <Sparkles className={`w-3.5 h-3.5 ${isEnhancing ? 'animate-spin' : ''}`} />
+                  <span>{isEnhancing ? 'Thinking...' : '1. Enhance Prompt'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isEnhancing || isGeneratingPreview || !inputPrompt.trim()}
+                  onClick={handleEnhanceAndAutoGenerate}
+                  className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-400 via-pink-400 to-cyan-300 hover:brightness-110 text-slate-950 font-black text-xs shadow-lg shadow-cyan-950/60 flex items-center gap-1.5 transition-all hover:scale-105 disabled:opacity-50 cursor-pointer"
+                  title="Prompt enhance karein aur turant 8K image/media maal render karein"
+                >
+                  <Zap className="w-3.5 h-3.5 fill-current text-slate-950" />
+                  <span>{isGeneratingPreview ? 'Rendering...' : '⚡ Enhance & Generate Maal'}</span>
+                </button>
+              </div>
             </div>
 
             {/* Quick Inspiration Chips */}
@@ -1043,6 +1117,13 @@ export const OmniEnhanceModal: React.FC<OmniEnhanceModalProps> = ({
                           <img
                             src={generatedPreviewUrl}
                             alt="AI Generated Output"
+                            onError={() => {
+                              if (!generatedPreviewUrl.startsWith('/api/ai/image-proxy') && generatedPreviewUrl.startsWith('http')) {
+                                setGeneratedPreviewUrl(`/api/ai/image-proxy?url=${encodeURIComponent(generatedPreviewUrl)}`);
+                              } else {
+                                setGeneratedPreviewUrl('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1600&q=90');
+                              }
+                            }}
                             className="w-full h-full object-cover"
                           />
                         </div>

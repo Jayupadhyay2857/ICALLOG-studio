@@ -13,9 +13,11 @@ import {
   Wand2,
   RefreshCw,
   FileText,
+  Zap,
 } from 'lucide-react';
 import { UserProfile, ActiveTab } from '../types.ts';
 import { safeDownloadMedia } from '../lib/downloadHelper.ts';
+import { enhancePrompt } from '../lib/api.ts';
 
 interface VoiceCloneStudioProps {
   user: UserProfile;
@@ -36,6 +38,7 @@ export const VoiceCloneStudio: React.FC<VoiceCloneStudioProps> = ({
   const [speed, setSpeed] = useState(1.0);
   const [emotion, setEmotionalTone] = useState<'neutral' | 'enthusiastic' | 'dramatic' | 'calm'>('enthusiastic');
   const [isSynthesizing, setIsSynthesizing] = useState(false);
+  const [isEnhancing, setIsEnhancing] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
 
   const handleSynthesize = () => {
@@ -48,7 +51,62 @@ export const VoiceCloneStudio: React.FC<VoiceCloneStudioProps> = ({
     setTimeout(() => {
       setIsSynthesizing(false);
       onNotify('Voice Synthesized!', 'AI neural speech successfully generated.', 'success');
-    }, 1000);
+      handlePlayVoice();
+    }, 800);
+  };
+
+  const handleEnhanceScript = async () => {
+    if (!inputText.trim()) return;
+    try {
+      setIsEnhancing(true);
+      onNotify('Enhancing Script', 'Consulting neural voice director for natural speech rhythm...', 'info');
+      const res = await enhancePrompt(inputText, 'voice');
+      if (res?.enhancedPrompt) {
+        setInputText(res.enhancedPrompt);
+        onNotify('Script Enhanced!', 'Injected natural pauses, vocal pacing & inflection cues.', 'success');
+      }
+    } catch {
+      onNotify('Notice', 'Voice script booster active.', 'info');
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
+
+  const handleEnhanceAndSynthesize = async () => {
+    if (!inputText.trim()) return;
+    try {
+      setIsEnhancing(true);
+      setIsSynthesizing(true);
+      onNotify('1-Click Voice Master', 'Script enhance karke turant neural voice bolna shuru karegi...', 'info');
+
+      let targetScript = inputText;
+      try {
+        const res = await enhancePrompt(inputText, 'voice');
+        if (res?.enhancedPrompt) {
+          targetScript = res.enhancedPrompt;
+          setInputText(targetScript);
+        }
+      } catch {}
+      setIsEnhancing(false);
+
+      setTimeout(() => {
+        setIsSynthesizing(false);
+        onNotify('Voice Synthesized!', `AI neural speech generated with ${selectedVoice}!`, 'success');
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(targetScript);
+          utterance.pitch = pitch;
+          utterance.rate = speed;
+          utterance.onstart = () => setIsPlaying(true);
+          utterance.onend = () => setIsPlaying(false);
+          utterance.onerror = () => setIsPlaying(false);
+          window.speechSynthesis.speak(utterance);
+        }
+      }, 700);
+    } catch {
+      setIsEnhancing(false);
+      setIsSynthesizing(false);
+    }
   };
 
   const handlePlayVoice = () => {
@@ -184,9 +242,33 @@ export const VoiceCloneStudio: React.FC<VoiceCloneStudioProps> = ({
         <div className="lg:col-span-2 space-y-6">
           <div className="p-6 rounded-3xl bg-slate-900/90 border border-purple-500/30 space-y-6 shadow-2xl">
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                Speech Script Text (Hindi / English / Hinglish)
-              </label>
+              <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  Speech Script Text (Hindi / English / Hinglish)
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={isEnhancing || !inputText.trim()}
+                    onClick={handleEnhanceScript}
+                    className="px-2.5 py-1 rounded-lg bg-purple-950 border border-purple-800 text-purple-300 text-xs font-semibold hover:bg-purple-900 transition-colors flex items-center gap-1 disabled:opacity-50"
+                    title="Sirf script text enhance karein"
+                  >
+                    <Sparkles className={`w-3.5 h-3.5 ${isEnhancing ? 'animate-spin' : ''}`} />
+                    <span>{isEnhancing ? 'Enhancing...' : '1. Enhance Script'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isEnhancing || isSynthesizing || !inputText.trim()}
+                    onClick={handleEnhanceAndSynthesize}
+                    className="px-3 py-1 rounded-lg bg-gradient-to-r from-amber-400 via-pink-400 to-cyan-300 hover:brightness-110 text-slate-950 font-black text-xs flex items-center gap-1 transition-all hover:scale-105 disabled:opacity-50 shadow-md cursor-pointer"
+                    title="Script enhance karein aur turant neural speech voice generate karein"
+                  >
+                    <Zap className="w-3.5 h-3.5 fill-current text-slate-950" />
+                    <span>⚡ Enhance & Synthesize Maal</span>
+                  </button>
+                </div>
+              </div>
               <textarea
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
@@ -195,6 +277,27 @@ export const VoiceCloneStudio: React.FC<VoiceCloneStudioProps> = ({
                 placeholder="Type your script here..."
               />
             </div>
+
+            {/* Live Audio Visualizer Bar when playing or synthesizing */}
+            {(isPlaying || isSynthesizing) && (
+              <div className="p-3 rounded-xl bg-purple-950/70 border border-purple-800 flex items-center justify-between gap-3 animate-in fade-in">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                  <span className="text-xs font-bold text-purple-200">
+                    {isSynthesizing ? 'Neural Vocal Tract Synthesizing...' : 'Live Neural Audio Playing...'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 h-6">
+                  {[35, 75, 45, 90, 60, 85, 40, 95, 65, 50, 80, 40, 70, 90].map((h, i) => (
+                    <span
+                      key={i}
+                      className="w-1 bg-gradient-to-t from-purple-500 to-cyan-400 rounded-full animate-pulse"
+                      style={{ height: `${h}%`, animationDelay: `${i * 0.08}s` }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-3">

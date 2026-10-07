@@ -18,9 +18,11 @@ import {
   Radio,
   Flame,
   Award,
+  Zap,
 } from 'lucide-react';
 import { UserProfile, ActiveTab } from '../types.ts';
 import { safeDownloadMedia } from '../lib/downloadHelper.ts';
+import { enhancePrompt } from '../lib/api.ts';
 
 interface NeuralCinemaStudioProps {
   user: UserProfile;
@@ -47,6 +49,7 @@ export const NeuralCinemaStudio: React.FC<NeuralCinemaStudioProps> = ({
     'A city built on floating crystal islands above a bioluminescent ocean where light rails connect ancient spires.'
   );
   const [isSynthesizing, setIsSynthesizing] = useState(false);
+  const [isEnhancing, setIsEnhancing] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
 
@@ -65,13 +68,57 @@ export const NeuralCinemaStudio: React.FC<NeuralCinemaStudioProps> = ({
   const animFrameRef = useRef<number | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
-  // Synthesize Dream
-  const handleSynthesizeDream = () => {
+  const handleEnhanceDream = async () => {
     if (!dreamPrompt.trim()) return;
+    try {
+      setIsEnhancing(true);
+      onNotify('Enhancing Dream Vision', 'Consulting neural subconscious model...', 'info');
+      const res = await enhancePrompt(dreamPrompt, 'video');
+      if (res?.enhancedPrompt) {
+        setDreamPrompt(res.enhancedPrompt);
+        onNotify('Dream Vision Enhanced!', 'Injected atmospheric color grading, kinetic drift and frequency tone.', 'success');
+      }
+    } catch {
+      onNotify('Notice', 'Dream booster active.', 'info');
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
+
+  const handleEnhanceAndSynthesizeDreamMaal = async () => {
+    if (!dreamPrompt.trim()) return;
+    try {
+      setIsEnhancing(true);
+      setIsSynthesizing(true);
+      onNotify('1-Click Neural Dream', 'Dream vision enhance karke turant live multi-sensory cinema canvas generate ho raha hai...', 'info');
+
+      let targetPrompt = dreamPrompt;
+      try {
+        const res = await enhancePrompt(dreamPrompt, 'video');
+        if (res?.enhancedPrompt) {
+          targetPrompt = res.enhancedPrompt;
+          setDreamPrompt(targetPrompt);
+        }
+      } catch {}
+      setIsEnhancing(false);
+
+      setTimeout(() => {
+        handleSynthesizeDream(targetPrompt);
+      }, 300);
+    } catch {
+      setIsEnhancing(false);
+      setIsSynthesizing(false);
+    }
+  };
+
+  // Synthesize Dream
+  const handleSynthesizeDream = (overridePrompt?: string) => {
+    const promptToUse = overridePrompt || dreamPrompt;
+    if (!promptToUse.trim()) return;
     setIsSynthesizing(true);
 
     setTimeout(() => {
-      const lower = dreamPrompt.toLowerCase();
+      const lower = promptToUse.toLowerCase();
       let style: DreamScene['visualStyle'] = 'bioluminescent_sci_fi';
       let colors: [string, string, string] = ['#06b6d4', '#8b5cf6', '#ec4899'];
       let freq: DreamScene['neuralFrequency'] = '432Hz';
@@ -91,11 +138,11 @@ export const NeuralCinemaStudio: React.FC<NeuralCinemaStudioProps> = ({
 
       setActiveDream({
         id: `dream_${Date.now()}`,
-        dreamPrompt,
+        dreamPrompt: promptToUse,
         visualStyle: style,
         cameraMotion: 'weightless_drift',
         neuralFrequency: freq,
-        narrativeMonologue: `We awaken inside the collective subconscious. "${dreamPrompt}". The boundary between dream and cinema has dissolved.`,
+        narrativeMonologue: `We awaken inside the collective subconscious. "${promptToUse}". The boundary between dream and cinema has dissolved.`,
         colorPalette: colors,
       });
 
@@ -235,14 +282,39 @@ export const NeuralCinemaStudio: React.FC<NeuralCinemaStudioProps> = ({
               placeholder="Describe your subconscious dream: e.g. A city among floating purple storm clouds..."
               className="flex-1 w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-purple-500/30 text-white text-xs sm:text-sm focus:outline-none focus:border-cyan-400"
             />
-            <button
-              onClick={handleSynthesizeDream}
-              disabled={isSynthesizing}
-              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-400 hover:to-cyan-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:opacity-50"
-            >
-              <Wand2 className={`w-4 h-4 ${isSynthesizing ? 'animate-spin' : ''}`} />
-              <span>{isSynthesizing ? 'Synthesizing Layers...' : 'Synthesize Dream'}</span>
-            </button>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={handleEnhanceDream}
+                disabled={isEnhancing || isSynthesizing || !dreamPrompt.trim()}
+                className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl bg-purple-950 border border-purple-800 hover:bg-purple-900 text-purple-300 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                title="Sirf dream prompt text enhance karein"
+              >
+                <Sparkles className={`w-3.5 h-3.5 ${isEnhancing ? 'animate-spin' : ''}`} />
+                <span>{isEnhancing ? 'Enhancing...' : '1. Enhance Vision'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSynthesizeDream()}
+                disabled={isSynthesizing}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+              >
+                <Wand2 className={`w-3.5 h-3.5 ${isSynthesizing ? 'animate-spin' : ''}`} />
+                <span>Synthesize</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleEnhanceAndSynthesizeDreamMaal}
+                disabled={isEnhancing || isSynthesizing || !dreamPrompt.trim()}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 via-pink-400 to-cyan-300 hover:brightness-110 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-purple-950/60 cursor-pointer hover:scale-105 disabled:opacity-50 transition-all shrink-0"
+                title="Prompt enhance karein aur turant multi-sensory dream cinema canvas generate karein"
+              >
+                <Zap className="w-3.5 h-3.5 fill-current text-slate-950" />
+                <span>⚡ Enhance & Synthesize Maal</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

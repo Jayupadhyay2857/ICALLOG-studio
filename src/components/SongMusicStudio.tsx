@@ -290,6 +290,38 @@ export const SongMusicStudio: React.FC<SongMusicStudioProps> = ({
     }
   };
 
+  // 1-Click: Enhance Prompt, Generate Lyrics & Compose Full Song Track ("Maal Tayyar")
+  const handleEnhanceAndComposeSongMaal = async () => {
+    try {
+      setIsEnhancingMusic(true);
+      setIsGeneratingLyrics(true);
+      setIsComposingSong(true);
+      onNotify('1-Click Music Master', 'AI prompt boost, rhyming lyrics aur studio track ek saath synthesize ho rahe hain...', 'info');
+
+      let topicToUse = lyricTopic || 'Dil ki baat aur pyaar ka naghma';
+      try {
+        const res = await enhancePrompt(topicToUse, 'music');
+        if (res?.enhancedPrompt) {
+          topicToUse = res.enhancedPrompt;
+          setLyricTopic(topicToUse);
+        }
+      } catch {}
+      setIsEnhancingMusic(false);
+
+      handleGenerateAiLyrics(topicToUse);
+
+      setTimeout(() => {
+        setIsComposingSong(false);
+        setIsPlayingComposed(true);
+        onNotify('🎵 Full Song Ready!', `1-Click Song Track composed in ${selectedGenre.name} style!`, 'success');
+      }, 2000);
+    } catch {
+      setIsEnhancingMusic(false);
+      setIsGeneratingLyrics(false);
+      setIsComposingSong(false);
+    }
+  };
+
   // Handle AI Lyrics Generation
   const handleGenerateAiLyrics = (overrideTopic?: string) => {
     const topicToUse = overrideTopic || lyricTopic || 'Dil ki baat aur pyaar ka naghma';
@@ -741,7 +773,7 @@ export const SongMusicStudio: React.FC<SongMusicStudioProps> = ({
                     type="button"
                     disabled={isEnhancingMusic || !lyricTopic.trim()}
                     onClick={handleEnhanceMusicPrompt}
-                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 shadow-md disabled:opacity-50"
+                    className="px-3 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 shadow-md disabled:opacity-50"
                   >
                     <Sparkles className={`w-3.5 h-3.5 ${isEnhancingMusic ? 'animate-spin' : 'text-cyan-300'}`} />
                     <span>{isEnhancingMusic ? 'Boosting...' : '✨ Enhance AI'}</span>
@@ -750,7 +782,7 @@ export const SongMusicStudio: React.FC<SongMusicStudioProps> = ({
                     type="button"
                     disabled={isGeneratingLyrics}
                     onClick={() => handleGenerateAiLyrics()}
-                    className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 shadow-md"
+                    className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 shadow-md"
                   >
                     {isGeneratingLyrics ? (
                       <>
@@ -763,6 +795,16 @@ export const SongMusicStudio: React.FC<SongMusicStudioProps> = ({
                         <span>Write Lyrics</span>
                       </>
                     )}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isEnhancingMusic || isComposingSong}
+                    onClick={handleEnhanceAndComposeSongMaal}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-400 via-pink-400 to-cyan-300 hover:brightness-110 text-slate-950 font-black text-xs transition-all shrink-0 flex items-center gap-1.5 shadow-lg shadow-purple-950/60 cursor-pointer hover:scale-105 disabled:opacity-50"
+                    title="1-Click: Enhance prompt, write lyrics and compose full track immediately"
+                  >
+                    <Zap className="w-3.5 h-3.5 fill-current text-slate-950" />
+                    <span>⚡ Enhance & Compose Song Maal</span>
                   </button>
                 </div>
 

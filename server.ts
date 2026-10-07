@@ -757,6 +757,35 @@ app.post('/api/ai/generate-image', async (req: Request, res: Response) => {
   }
 });
 
+// Image Proxy Endpoint to reliably bypass ISP/adblocker restrictions
+app.get('/api/ai/image-proxy', async (req: Request, res: Response) => {
+  const imageUrl = req.query.url as string;
+  if (!imageUrl) {
+    return res.status(400).send('Missing url parameter');
+  }
+  try {
+    const upstreamRes = await fetch(imageUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+      },
+    });
+
+    if (!upstreamRes.ok) {
+      return res.status(502).json({ error: `Upstream image fetch failed with status ${upstreamRes.status}` });
+    }
+
+    const contentType = upstreamRes.headers.get('content-type') || 'image/jpeg';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+    const arrayBuffer = await upstreamRes.arrayBuffer();
+    res.send(Buffer.from(arrayBuffer));
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Proxy fetch error';
+    res.status(500).json({ error: msg });
+  }
+});
+
 // AI Super-Resolution Upscale to 8K
 app.post('/api/ai/upscale-8k', async (req: Request, res: Response) => {
   const { imageUrl, targetResolution = '8K', userId = 'demo_user' } = req.body;
