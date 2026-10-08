@@ -859,6 +859,45 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = ({
     cameraAngle.current.radius = Math.max(2.0, Math.min(8.0, cameraAngle.current.radius + e.deltaY * 0.003));
   };
 
+  // Mobile Touch Gestures for 3D Viewport (1-finger orbit, 2-finger pinch zoom)
+  const touchStartDistRef = useRef<number | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      isDraggingRef.current = true;
+      setHoveredObject(null);
+      prevMousePos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    } else if (e.touches.length === 2) {
+      isDraggingRef.current = false;
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      touchStartDistRef.current = Math.hypot(dx, dy);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 1 && isDraggingRef.current) {
+      const deltaX = e.touches[0].clientX - prevMousePos.current.x;
+      const deltaY = e.touches[0].clientY - prevMousePos.current.y;
+      prevMousePos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+
+      cameraAngle.current.theta -= deltaX * 0.01;
+      cameraAngle.current.phi = Math.max(-0.2, Math.min(1.2, cameraAngle.current.phi + deltaY * 0.01));
+    } else if (e.touches.length === 2 && touchStartDistRef.current !== null) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const currentDist = Math.hypot(dx, dy);
+      const deltaDist = touchStartDistRef.current - currentDist;
+      cameraAngle.current.radius = Math.max(2.0, Math.min(8.0, cameraAngle.current.radius + deltaDist * 0.01));
+      touchStartDistRef.current = currentDist;
+    }
+  };
+
+  const handleTouchEnd = () => {
+    isDraggingRef.current = false;
+    touchStartDistRef.current = null;
+  };
+
   // Auto-Rig API Trigger
   const handleAutoRig = async () => {
     try {
@@ -1538,7 +1577,11 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = ({
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseLeave}
           onWheel={handleWheel}
-          className="lg:col-span-3 h-[540px] rounded-3xl overflow-hidden relative cursor-grab active:cursor-grabbing border border-slate-800 bg-[#0a0e17] shadow-2xl"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchEnd}
+          className="lg:col-span-3 h-[420px] sm:h-[480px] lg:h-[540px] rounded-3xl overflow-hidden relative cursor-grab active:cursor-grabbing border border-slate-800 bg-[#0a0e17] shadow-2xl touch-none"
         >
           {/* Interactive Hover Tooltip for 3D Objects */}
           {hoveredObject && (

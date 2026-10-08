@@ -1870,6 +1870,7 @@ app.post('/api/entertainment/populate-studio-assets', (req: Request, res: Respon
 
 // 23. Character Repository In-Memory Storage & TMDB Character Extraction Engine
 const characterRepositoryStore: Map<string, any[]> = new Map();
+const characterFavoritesStore: Map<string, string[]> = new Map();
 
 // Helper to seed or extract character traits from TMDB person/character
 function buildExtractedCharacterProfile(personOrChar: any, index: number): any {
@@ -2100,6 +2101,63 @@ app.post('/api/entertainment/character/import-to-studio', (req: Request, res: Re
     success: true,
     message: `Character "${character.name}" imported into ${targetStudio}!`,
     studioImportPayload,
+  });
+});
+
+// 26. Character Favorites Management
+app.get('/api/entertainment/character/favorites', (req: Request, res: Response) => {
+  const userId = (req.query.userId as string) || 'demo_user';
+  const favorites = characterFavoritesStore.get(userId) || [];
+  res.json({ success: true, favorites, count: favorites.length });
+});
+
+app.post('/api/entertainment/character/favorite', (req: Request, res: Response) => {
+  const { characterId, isFavorite, userId = 'demo_user' } = req.body;
+  if (!characterId) {
+    return res.status(400).json({ success: false, error: 'characterId required' });
+  }
+
+  let favorites = characterFavoritesStore.get(userId) || [];
+  if (isFavorite) {
+    if (!favorites.includes(characterId)) {
+      favorites.push(characterId);
+    }
+  } else {
+    favorites = favorites.filter((id) => id !== characterId);
+  }
+  characterFavoritesStore.set(userId, favorites);
+
+  broadcastSse('CHARACTER_FAVORITE_TOGGLED', { characterId, isFavorite, userId });
+
+  res.json({
+    success: true,
+    message: isFavorite ? 'Added to favorites' : 'Removed from favorites',
+    isFavorite,
+    favorites,
+    count: favorites.length,
+  });
+});
+
+// 27. Character Visual Comparison & Crossover Scene Generator
+app.post('/api/entertainment/character/crossover-prompt', (req: Request, res: Response) => {
+  const { characters = [], targetStudio = 'image_studio', crossoverStyle = 'epic_duel' } = req.body;
+  if (!Array.isArray(characters) || characters.length < 2) {
+    return res.status(400).json({ success: false, error: 'At least 2 characters required for crossover comparison' });
+  }
+
+  const charNames = characters.map((c) => c.name).join(' and ');
+  const charTraits = characters.map((c) => `${c.name} (${c.visualTraits?.outfit || 'iconic outfit'}, ${c.visualTraits?.aestheticArchetype || 'master'})`).join(' facing ');
+  
+  let imagePrompt = `8k ultra-detailed cinematic concept artwork depicting a legendary showdown and crossover between ${charNames}. Dynamic combat composition, ${charTraits}, volumetric lighting, highly detailed faces, Unreal Engine 5 render, cinematic lighting.`;
+  let screenplayScript = `EXT. CONVERGENCE OF WORLDS - TWILIGHT\n\nA dimensional rift crackles with raw energy.\n\n${characters[0].name.toUpperCase()} stands on the precipice, eyes locked forward.\n\n${characters[1].name.toUpperCase()} emerges from the cosmic smoke.\n\n${characters[0].name.toUpperCase()}\n"I didn't expect our paths to cross here."\n\n${characters[1].name.toUpperCase()}\n"Destiny rarely gives advance notice."\n\nThey prepare their signature stances as the fate of the multiverse hangs in balance.`;
+
+  res.json({
+    success: true,
+    crossoverPrompt: {
+      imagePrompt,
+      screenplayScript,
+      characters: characters.map((c) => ({ id: c.id, name: c.name, category: c.category })),
+    },
   });
 });
 

@@ -70,6 +70,12 @@ import {
   Layers3,
   Sparkle,
   UserCheck,
+  Heart,
+  Scale,
+  Columns,
+  Swords,
+  Maximize2,
+  Trash2,
 } from 'lucide-react';
 import { ActiveTab, UserProfile, ProjectItem } from '../types.ts';
 import { useLanguage } from '../context/LanguageContext.tsx';
@@ -95,6 +101,11 @@ import {
   saveCharacterToRepository,
   removeCharacterFromRepository,
   importCharacterToStudio,
+  toggleCharacterFavorite,
+  getFavoriteCharacterIds,
+  isCharacterFavorite,
+  generateCrossoverPrompt,
+  FAVORITE_CHARACTERS_STORAGE_KEY,
 } from '../lib/entertainmentAggregator.ts';
 
 export type GlobalSearchFilter =
@@ -175,16 +186,25 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
   const [isLoadingTrending, setIsLoadingTrending] = useState(false);
   const [isLiveTmdbTrending, setIsLiveTmdbTrending] = useState(false);
 
-  // 2. Character Repository State (NEW!)
+  // 2. Character Repository State (with Favorites & Visual Comparison)
   const [characterResults, setCharacterResults] = useState<CharacterProfile[]>(MASTER_CHARACTER_REPOSITORY);
   const [characterCategory, setCharacterCategory] = useState<'all' | 'anime' | 'superhero' | 'cinema' | 'gaming' | 'scifi' | 'fantasy' | 'global'>('all');
   const [characterFilterSaved, setCharacterFilterSaved] = useState(false);
+  const [characterFilterFavorites, setCharacterFilterFavorites] = useState(false);
   const [isLoadingCharacters, setIsLoadingCharacters] = useState(false);
   const [isLiveTmdbCharacters, setIsLiveTmdbCharacters] = useState(false);
   const [savedCharactersCount, setSavedCharactersCount] = useState(0);
+  const [favoritesCount, setFavoritesCount] = useState(0);
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [selectedCharacter, setSelectedCharacter] = useState<CharacterProfile | null>(null);
   const [characterDrawerTab, setCharacterDrawerTab] = useState<'traits' | 'bio' | 'filmography' | 'quotes' | 'prompts'>('traits');
   const [copiedTraitKey, setCopiedTraitKey] = useState<string | null>(null);
+
+  // Visual Comparison State
+  const [selectedForComparison, setSelectedForComparison] = useState<CharacterProfile[]>([]);
+  const [isComparisonModalOpen, setIsComparisonModalOpen] = useState(false);
+  const [crossoverResult, setCrossoverResult] = useState<{ imageStudioPrompt: string; filmStudioScriptPrompt: string; summary: string } | null>(null);
+  const [comparisonActiveTab, setComparisonActiveTab] = useState<'visual_matrix' | 'color_palette' | 'abilities' | 'studio_prompts' | 'crossover'>('visual_matrix');
 
   // 3. Cross-Platform Live Entertainment State
   const [entertainmentResults, setEntertainmentResults] = useState<EntertainmentItem[]>(MASTER_ENTERTAINMENT_CATALOG);
@@ -239,6 +259,14 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
       }
 
       try {
+        const favs = getFavoriteCharacterIds();
+        setFavoriteIds(favs);
+        setFavoritesCount(favs.length);
+      } catch {
+        // ignore
+      }
+
+      try {
         const storedProjects = localStorage.getItem('icallog_user_projects_v1');
         if (storedProjects) {
           const parsed = JSON.parse(storedProjects);
@@ -273,6 +301,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
         query: searchQuery,
         category: characterCategory,
         filterSaved: characterFilterSaved,
+        filterFavorites: characterFilterFavorites,
         tmdbKey: customTmdbKey.trim() || undefined,
         language: selectedLanguageCode,
         userId: user?.id || 'demo_user',
@@ -280,7 +309,9 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
 
       setCharacterResults(res.characters);
       setSavedCharactersCount(res.savedCount);
+      setFavoritesCount(res.favoritesCount);
       setIsLiveTmdbCharacters(res.isLiveTmdb);
+      setFavoriteIds(getFavoriteCharacterIds());
     } catch (err) {
       console.warn('Failed to load character repository:', err);
     } finally {
@@ -292,7 +323,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
     if (isOpen && activeMode === 'characters') {
       loadCharacterRepository();
     }
-  }, [isOpen, activeMode, characterCategory, characterFilterSaved, searchQuery, customTmdbKey]);
+  }, [isOpen, activeMode, characterCategory, characterFilterSaved, characterFilterFavorites, searchQuery, customTmdbKey]);
 
   // Load Real-Time Trending Media from TMDB API
   const loadTrendingData = async () => {
@@ -405,6 +436,30 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
     }
   };
 
+  // Toggle Favorite Character in LocalStorage & Server
+  const handleToggleFavorite = async (char: CharacterProfile) => {
+    const res = await toggleCharacterFavorite(char, user?.id || 'demo_user');
+    setFavoriteIds(res.favorites);
+    setFavoritesCount(res.count);
+
+    if (res.isFavorite) {
+      setPopulatedToast(`❤️ Added "${char.name}" to your Favorites!`);
+    } else {
+      setPopulatedToast(`Removed "${char.name}" from Favorites.`);
+    }
+
+    // Update current character results in-place
+    setCharacterResults((prev) =>
+      prev.map((c) => (c.id === char.id ? { ...c, isFavorite: res.isFavorite } : c))
+    );
+
+    if (selectedCharacter && selectedCharacter.id === char.id) {
+      setSelectedCharacter({ ...selectedCharacter, isFavorite: res.isFavorite });
+    }
+
+    setTimeout(() => setPopulatedToast(null), 3000);
+  };
+
   // Toggle Save / Bookmark Character in Repository
   const handleToggleSaveCharacter = async (char: CharacterProfile) => {
     if (char.isSavedToRepo) {
@@ -416,6 +471,38 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
     }
     loadCharacterRepository();
     setTimeout(() => setPopulatedToast(null), 3000);
+  };
+
+  // Toggle Character in Visual Comparison Tray
+  const handleToggleCompare = (char: CharacterProfile) => {
+    const exists = selectedForComparison.some((c) => c.id === char.id);
+    if (exists) {
+      setSelectedForComparison((prev) => prev.filter((c) => c.id !== char.id));
+      setPopulatedToast(`Removed "${char.name}" from visual comparison.`);
+    } else {
+      if (selectedForComparison.length >= 4) {
+        setPopulatedToast('⚠️ Maximum 4 characters can be compared simultaneously.');
+        setTimeout(() => setPopulatedToast(null), 3000);
+        return;
+      }
+      const updated = [...selectedForComparison, char];
+      setSelectedForComparison(updated);
+      setPopulatedToast(`⚖️ Added "${char.name}" to Visual Comparison (${updated.length}/4).`);
+      if (updated.length >= 2) {
+        setCrossoverResult(generateCrossoverPrompt(updated));
+      }
+    }
+    setTimeout(() => setPopulatedToast(null), 3000);
+  };
+
+  const handleOpenComparisonModal = () => {
+    if (selectedForComparison.length < 2) {
+      setPopulatedToast('⚠️ Please select at least 2 characters to compare.');
+      setTimeout(() => setPopulatedToast(null), 3000);
+      return;
+    }
+    setCrossoverResult(generateCrossoverPrompt(selectedForComparison));
+    setIsComparisonModalOpen(true);
   };
 
   // Launch Studio Tool with Direct Character Import
@@ -437,6 +524,30 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
     }
   };
 
+  // Launch Crossover Prompt into ImageStudio / FilmStudio
+  const handleLaunchCrossoverToStudio = (target: 'image_studio' | 'film_studio') => {
+    if (!crossoverResult || selectedForComparison.length < 2) return;
+    try {
+      const payload = {
+        title: `Crossover: ${selectedForComparison.map((c) => c.name).join(' vs ')}`,
+        characters: selectedForComparison,
+        prompt: target === 'image_studio' ? crossoverResult.imageStudioPrompt : crossoverResult.filmStudioScriptPrompt,
+        targetStudio: target,
+        timestamp: Date.now(),
+      };
+      localStorage.setItem('icallog_active_crossover_studio_import', JSON.stringify(payload));
+      window.dispatchEvent(new CustomEvent('icallog_crossover_studio_imported', { detail: payload }));
+      setPopulatedToast(`⚔️ Crossover loaded into ${target.replace('_', ' ').toUpperCase()}!`);
+      setTimeout(() => {
+        setActiveTab(target as ActiveTab);
+        setIsComparisonModalOpen(false);
+        onClose();
+      }, 300);
+    } catch (err) {
+      console.warn('Crossover launch error:', err);
+    }
+  };
+
   // Instant Studio Asset Population Trigger
   const handlePopulateStudioAssets = async (item: EntertainmentItem, studioKey: string = 'all') => {
     try {
@@ -448,315 +559,180 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
       setPopulatedSuccessItem(item);
       setTimeout(() => setPopulatedToast(null), 4000);
     } catch (err) {
-      console.warn('Failed to populate studio assets:', err);
+      console.warn('Asset population notice:', err);
     }
   };
 
-  // Launch Studio Tool with Pre-Populated Reference
-  const handleLaunchStudioWithAsset = (tab: ActiveTab, subTab?: string, item?: EntertainmentItem) => {
-    if (item) {
-      try {
-        localStorage.setItem('icallog_active_entertainment_reference', JSON.stringify(item));
-        window.dispatchEvent(new CustomEvent('icallog_studio_populated', { detail: { item, tab, subTab } }));
-      } catch {
-        // ignore
-      }
-    }
-    setActiveTab(tab);
-    if (subTab && onSelectSubTab) onSelectSubTab(tab, subTab);
-    onClose();
-  };
-
-  // Direct Project Import Workflow
-  const handleExecuteImportProject = async (item: EntertainmentItem) => {
-    setImportingStatus((prev) => ({ ...prev, [item.id]: 'loading' }));
-
-    try {
-      const targetId = importTargetType === 'existing_project' ? selectedProjectId : undefined;
-      const res = await importEntertainmentToActiveProject(item, {
-        targetProjectId: targetId,
-        projectCategory: importProjectCategory,
-        userId: user?.id || 'demo_user',
-        saveAssetsToCloud: saveAssetsCloud,
-      });
-
-      if (res.success) {
-        setImportingStatus((prev) => ({ ...prev, [item.id]: 'success' }));
-        setTimeout(() => {
-          setImportModalItem(null);
-          setImportingStatus((prev) => ({ ...prev, [item.id]: 'idle' }));
-        }, 1500);
-      }
-    } catch (err) {
-      console.error('Project import error:', err);
-      setImportingStatus((prev) => ({ ...prev, [item.id]: 'idle' }));
-    }
-  };
-
-  // Copy Subtitle Text or SRT File
-  const handleCopySubtitles = (track: any) => {
-    if (!track) return;
-    const quotes = track.quotes || syncedQuotes;
-    const text = quotes.map((q: any) => `[${q.time}] ${q.speaker}: ${q.translated || q.text}`).join('\n');
-    navigator.clipboard.writeText(text);
-    setCopiedSubtitle(true);
-    setTimeout(() => setCopiedSubtitle(false), 2000);
-  };
-
-  const handleDownloadSrt = (track: any, title: string) => {
-    const srt = track?.fullSrt || generateSrtContent(syncedQuotes);
-    const blob = new Blob([srt], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${title.replace(/\s+/g, '_')}_${selectedLanguageCode}.srt`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Static Platform Features & Systems Registry
-  const allPlatformItems: GlobalSearchItem[] = useMemo(() => {
-    return [
+  // Filtered Studio tools list
+  const filteredStudioItems: GlobalSearchItem[] = useMemo(() => {
+    const items: GlobalSearchItem[] = [
       {
-        id: 'studio_image_8k',
-        title: '8K Photorealistic Image Studio',
-        description: 'Multi-engine neural image generator (Flux, Gemini 3.1, Recraft, SDXL) with 8K upscale and inpainting.',
-        category: 'Image Studio',
+        id: 'image_studio',
+        title: '8K Image & Character Studio',
+        description: 'Generate hyper-realistic 8K cinematic imagery, character portraits, and visual concept art.',
+        category: 'Image & Generative',
         filterType: 'studios',
-        icon: <ImageIcon className="w-5 h-5 text-indigo-400" />,
-        iconBg: 'bg-indigo-500/10 border-indigo-500/20',
-        tab: 'image_studio',
-        keywords: ['image', 'photo', 'art', 'draw', 'flux', 'portrait', 'wallpaper', '8k', 'character art', 'cinematic render'],
-        hotkey: '⌘1',
+        icon: <ImageIcon className="w-5 h-5 text-purple-400" />,
+        tab: 'image_studio' as ActiveTab,
+        keywords: ['image', 'photo', 'flux', 'art', 'draw', 'character', 'portrait', '8k'],
+        hotkey: '⌘I',
       },
       {
-        id: 'studio_film',
-        title: 'Hollywood Film Studio & Scriptwriter',
-        description: 'End-to-end screenplay writing, cinematic breakdown, multi-shot storyboard, and director bible.',
-        category: 'Film & Screenplay',
+        id: 'film_studio',
+        title: 'Film & Screenplay Studio',
+        description: 'Multi-scene screenplay writer, shot-by-shot storyboard generator, and character bible.',
+        category: 'Film & 8K Video',
         filterType: 'video',
-        icon: <Film className="w-5 h-5 text-purple-400" />,
-        iconBg: 'bg-purple-500/10 border-purple-500/20',
-        tab: 'film_studio',
-        keywords: ['film', 'movie', 'hollywood', 'script', 'director', 'scene', 'cinema', 'screenplay', 'ott'],
-        hotkey: '⌘2',
+        icon: <Film className="w-5 h-5 text-indigo-400" />,
+        tab: 'film_studio' as ActiveTab,
+        keywords: ['film', 'screenplay', 'script', 'storyboard', 'director', 'scene', 'dialogue'],
+        hotkey: '⌘F',
       },
       {
-        id: 'studio_video_8k',
-        title: '8K Video Generation Suite',
-        description: 'Luma Dream Machine, Kling AI, Runway Gen-3 camera control, motion interpolation, and VFX.',
-        category: 'Video Generation',
-        filterType: 'video',
-        icon: <Video className="w-5 h-5 text-pink-400" />,
-        iconBg: 'bg-pink-500/10 border-pink-500/20',
-        tab: 'video_audio',
-        keywords: ['video', 'animation', 'render', 'movie', 'kling', 'luma', 'runway', 'motion', 'cinematic'],
+        id: 'three_d_engine',
+        title: '3D Mesh Engine & Spatial Canvas',
+        description: 'Generate 3D character meshes, rigged models, and spatial environment scenes.',
+        category: '3D Mesh & Engine',
+        filterType: '3d',
+        icon: <Box className="w-5 h-5 text-cyan-400" />,
+        tab: '3d_engine' as ActiveTab,
+        keywords: ['3d', 'mesh', 'glb', 'threejs', 'obj', 'rigging', 'spatial', 'animation'],
         hotkey: '⌘3',
       },
       {
-        id: 'studio_3d_engine',
-        title: '3D WebGL Engine & Rigging Studio',
-        description: 'Text-to-3D mesh synthesis, skeletal rigging, normal maps, PBR materials, and OBJ/GLTF export.',
-        category: '3D & Spatial',
-        filterType: '3d',
-        icon: <Box className="w-5 h-5 text-cyan-400" />,
-        iconBg: 'bg-cyan-500/10 border-cyan-500/20',
-        tab: '3d_engine',
-        keywords: ['3d', 'threejs', 'mesh', 'gltf', 'obj', 'sculpt', 'character 3d', 'model', 'rigging'],
-        hotkey: '⌘4',
-      },
-      {
-        id: 'studio_music_song',
-        title: 'Song Studio & AI Audio Generation',
-        description: 'Suno V3.5, Udio stem generation, multi-track melody synthesis, custom lyrics, and mastering.',
-        category: 'Music & Audio',
+        id: 'music_studio',
+        title: 'Music & Audio Studio',
+        description: 'AI lyric composer, multi-track stems generator, and character voice dubbing.',
+        category: 'Music & Dubbing',
         filterType: 'audio',
-        icon: <Music className="w-5 h-5 text-amber-400" />,
-        iconBg: 'bg-amber-500/10 border-amber-500/20',
-        tab: 'song_studio',
-        keywords: ['music', 'song', 'audio', 'suno', 'udio', 'lyrics', 'soundtrack', 'voice', 'singing', 'ost'],
-        hotkey: '⌘5',
+        icon: <Music className="w-5 h-5 text-emerald-400" />,
+        tab: 'video_audio' as ActiveTab,
+        keywords: ['music', 'audio', 'stem', 'voice', 'dub', 'song', 'orchestral'],
+        hotkey: '⌘M',
       },
       {
-        id: 'studio_auto_dubbing',
-        title: 'Auto-Dubbing & Multi-Language Voice Morph',
-        description: 'Instant speech-to-speech dubbing with 20+ language real-time lipsync, accent tuning, and SRT sync.',
-        category: 'Audio & Dubbing',
-        filterType: 'audio',
-        icon: <Volume2 className="w-5 h-5 text-emerald-400" />,
-        iconBg: 'bg-emerald-500/10 border-emerald-500/20',
-        tab: 'auto_dubbing',
-        keywords: ['dubbing', 'voice', 'translate', 'languages', 'subtitles', 'srt', 'hindi', 'japanese', 'spanish', 'speech'],
-      },
-      {
-        id: 'studio_manga_storyboard',
-        title: 'Manga & Comic Storyboard Suite',
-        description: 'Generates multi-panel Japanese manga layouts, speech bubbles, screentones, and dynamic SFX.',
-        category: 'Storyboarding',
+        id: 'manga_studio',
+        title: 'Manga & Comic Storyboarder',
+        description: 'Multi-panel anime & comic creator with speech bubbles and dynamic speedlines.',
+        category: 'Manga & Design',
         filterType: 'design',
-        icon: <Layers3 className="w-5 h-5 text-rose-400" />,
-        iconBg: 'bg-rose-500/10 border-rose-500/20',
-        tab: 'manga_storyboard',
-        keywords: ['manga', 'comic', 'anime storyboard', 'panels', 'webtoon', 'shonen', 'sketch'],
+        icon: <Sparkle className="w-5 h-5 text-pink-400" />,
+        tab: 'image_studio' as ActiveTab,
+        keywords: ['manga', 'comic', 'panel', 'anime', 'storyboard', 'dialogue', 'bubble'],
       },
       {
-        id: 'studio_game_creator',
-        title: 'Game Studio & Asset Generator',
-        description: 'Creates 2D sprite sheets, 3D character rigs, level mechanics, and logic bibles.',
-        category: 'Game Engine',
-        filterType: '3d',
-        icon: <Gamepad2 className="w-5 h-5 text-violet-400" />,
-        iconBg: 'bg-violet-500/10 border-violet-500/20',
-        tab: 'game_studio',
-        keywords: ['game', 'character design', 'unity', 'unreal', 'godot', 'sprite', 'rpg', 'mechanics'],
-      },
-      {
-        id: 'studio_projects_hub',
-        title: 'Projects Hub & Cloud Asset Vault',
-        description: 'Manage active creative projects, cloud assets, AWS S3 storage, and collaborative boards.',
-        category: 'Workspace',
+        id: 'projects_hub',
+        title: 'Unified Projects Hub',
+        description: 'Manage active studio productions, cloud assets, and team collaborations.',
+        category: 'Projects Hub',
         filterType: 'projects',
-        icon: <FolderKanban className="w-5 h-5 text-blue-400" />,
-        iconBg: 'bg-blue-500/10 border-blue-500/20',
-        tab: 'projects_hub',
-        keywords: ['projects', 'vault', 'files', 'cloud', 's3', 'saved', 'active', 'workspace'],
+        icon: <FolderKanban className="w-5 h-5 text-amber-400" />,
+        tab: 'projects_hub' as ActiveTab,
+        keywords: ['project', 'manage', 'vault', 'export', 'files', 'cloud'],
+        hotkey: '⌘P',
       },
     ];
-  }, []);
 
-  // Filtered Results for Studios Mode
-  const filteredStudioItems = useMemo(() => {
-    let items = allPlatformItems;
-    if (selectedFilter !== 'all') {
-      items = items.filter((i) => i.filterType === selectedFilter);
+    if (!searchQuery.trim()) {
+      return selectedFilter === 'all' ? items : items.filter((i) => i.filterType === selectedFilter);
     }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      items = items.filter(
-        (i) =>
-          i.title.toLowerCase().includes(q) ||
-          i.description.toLowerCase().includes(q) ||
-          i.category.toLowerCase().includes(q) ||
-          i.keywords?.some((k) => k.toLowerCase().includes(q))
-      );
-    }
-    return items;
-  }, [allPlatformItems, selectedFilter, searchQuery]);
-
-  // Filtered Results for Trending Mode
-  const filteredTrendingItems = useMemo(() => {
-    let items = trendingResults;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      items = items.filter(
-        (i) =>
-          i.title.toLowerCase().includes(q) ||
-          i.character.toLowerCase().includes(q) ||
-          i.franchise.toLowerCase().includes(q) ||
-          i.genres.some((g) => g.toLowerCase().includes(q)) ||
-          i.synopsis.toLowerCase().includes(q)
-      );
-    }
-    return items;
-  }, [trendingResults, searchQuery]);
-
-  // Selected Item Subtitle Track
-  const activeSubtitleTrack = useMemo(() => {
-    if (!selectedEntertainment) return null;
-    return (
-      selectedEntertainment.subtitles?.[selectedLanguageCode] ||
-      selectedEntertainment.subtitles?.['hi'] ||
-      selectedEntertainment.subtitles?.['en'] ||
-      Object.values(selectedEntertainment.subtitles || {})[0] ||
-      null
+    const q = searchQuery.toLowerCase();
+    return items.filter(
+      (item) =>
+        (selectedFilter === 'all' || item.filterType === selectedFilter) &&
+        (item.title.toLowerCase().includes(q) ||
+          item.description.toLowerCase().includes(q) ||
+          item.keywords?.some((k) => k.toLowerCase().includes(q)))
     );
-  }, [selectedEntertainment, selectedLanguageCode]);
+  }, [searchQuery, selectedFilter]);
+
+  // Filtered Trending items
+  const filteredTrendingItems = useMemo(() => {
+    if (!searchQuery.trim()) return trendingResults;
+    const q = searchQuery.toLowerCase();
+    return trendingResults.filter(
+      (item) =>
+        item.title.toLowerCase().includes(q) ||
+        item.character.toLowerCase().includes(q) ||
+        item.synopsis.toLowerCase().includes(q)
+    );
+  }, [trendingResults, searchQuery]);
 
   if (!isOpen) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xl flex items-start justify-center p-3 sm:p-6 overflow-y-auto animate-fadeIn"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 sm:pt-16 px-3 bg-black/80 backdrop-blur-xl animate-fadeIn">
+      {/* Toast Notification */}
+      {populatedToast && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-70 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold text-xs sm:text-sm px-5 py-2.5 rounded-full shadow-2xl border border-purple-300/40 flex items-center gap-2 animate-bounce">
+          <Sparkles className="w-4 h-4 text-amber-300 animate-spin" />
+          <span>{populatedToast}</span>
+        </div>
+      )}
+
       <div
-        className="w-full max-w-6xl bg-gradient-to-b from-slate-900/98 via-slate-900/95 to-slate-950/98 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col my-4 sm:my-8 transition-all"
+        className="w-full max-w-5xl bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100 max-h-[88vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Toast Alert */}
-        {populatedToast && (
-          <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white px-4 py-2.5 text-xs sm:text-sm font-semibold flex items-center justify-between shadow-lg animate-slideDown">
-            <div className="flex items-center gap-2">
-              <Zap className="w-4 h-4 text-amber-300 animate-pulse" />
-              <span>{populatedToast}</span>
-            </div>
-            <button
-              onClick={() => setPopulatedToast(null)}
-              className="p-1 hover:bg-white/20 rounded-md transition-colors"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
+        {/* ============================================================ */}
+        {/* SEARCH HEADER & NAVIGATION MODES */}
+        {/* ============================================================ */}
+        <div className="p-4 border-b border-slate-800 bg-slate-950/70 space-y-3">
+          {/* Main Search Bar & Quick Toggles */}
+          <div className="flex items-center gap-3">
+            <Search className="w-5 h-5 text-purple-400 shrink-0" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={
+                activeMode === 'characters'
+                  ? 'Search Character Repository (e.g. Goku, Batman, Spider-Man, Sukuna, Leo, Neo)...'
+                  : activeMode === 'trending'
+                  ? 'Search Trending TMDB Blockbusters, OTT Series & Anime...'
+                  : activeMode === 'entertainment'
+                  ? 'Search Global Entertainment Lore & Multi-Language Subtitles...'
+                  : 'Search 30+ Studios, AI Tools & Creative Features...'
+              }
+              className="w-full bg-transparent border-none text-sm sm:text-base text-white placeholder-slate-500 focus:outline-none focus:ring-0"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="p-1 rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
 
-        {/* Modal Header & Universal Search Input */}
-        <div className="p-4 sm:p-5 border-b border-slate-800 bg-slate-900/60 flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 sm:gap-3 flex-1">
-              <div className="relative flex-1">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={
-                    activeMode === 'characters'
-                      ? '👥 Search character profiles, visual traits, anime, superhero & cinema bios...'
-                      : activeMode === 'trending'
-                      ? '🔥 Filter trending media, movies, anime, OTT series & box office sensations...'
-                      : activeMode === 'entertainment'
-                      ? '🌐 Search cross-platform TMDB / OMDb global entertainment & multi-language lore...'
-                      : '🚀 Search 30+ creative studios, AI tools, 3D meshes & workflows...'
-                  }
-                  className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl pl-11 pr-10 py-3 text-sm sm:text-base text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/80 focus:border-transparent transition-all shadow-inner"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Custom API Key Config Button */}
+            {/* Custom API Key Configuration Button */}
             <button
               onClick={() => setShowApiDrawer(!showApiDrawer)}
-              className={`px-3 py-2.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all ${
+              className={`p-2 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all shrink-0 ${
                 customTmdbKey || customOmdbKey
-                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20'
-                  : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+                  ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
+                  : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-700'
               }`}
-              title="Configure TMDB / OMDb API Keys"
+              title="Configure TMDB / OMDb API Gateway"
             >
               <Key className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">TMDB API Gateway</span>
+              <span className="hidden sm:inline">
+                {customTmdbKey ? 'TMDB Connected' : 'API Keys'}
+              </span>
             </button>
 
             <button
               onClick={onClose}
-              className="p-2.5 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl transition-colors"
+              className="p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 shrink-0"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Primary Mode Navigation Tabs (4 Core Pillars) */}
-          <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
-            <div className="flex items-center bg-slate-950/80 p-1 rounded-xl border border-slate-800 overflow-x-auto max-w-full">
+          {/* 4 PRIMARY NAVIGATION MODAL TABS */}
+          <div className="flex items-center justify-between border-t border-slate-800/80 pt-2.5 overflow-x-auto gap-2">
+            <div className="flex items-center gap-1.5">
               {/* Character Repository Tab */}
               <button
                 onClick={() => {
@@ -765,18 +741,20 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
                 }}
                 className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all shrink-0 ${
                   activeMode === 'characters'
-                    ? 'bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/20'
-                    : 'text-slate-400 hover:text-slate-200'
+                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/20 ring-1 ring-purple-400/40'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
                 }`}
               >
                 <Users className="w-4 h-4 text-purple-300" />
                 <span>Character Repository</span>
-                <span className="px-1.5 py-0.5 text-[10px] bg-purple-950/80 border border-purple-500/30 rounded-full text-purple-200">
-                  {characterResults.length} Profiles
-                </span>
+                {favoritesCount > 0 && (
+                  <span className="px-1.5 py-0.2 bg-rose-500 text-white rounded-full text-[10px] font-bold">
+                    {favoritesCount}
+                  </span>
+                )}
               </button>
 
-              {/* Trending Media Tab */}
+              {/* Trending Media Dashboard Tab */}
               <button
                 onClick={() => {
                   setActiveMode('trending');
@@ -784,16 +762,19 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
                 }}
                 className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all shrink-0 ${
                   activeMode === 'trending'
-                    ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md shadow-amber-500/20'
-                    : 'text-slate-400 hover:text-slate-200'
+                    ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md shadow-amber-500/20 ring-1 ring-amber-400/40'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
                 }`}
               >
-                <Flame className="w-4 h-4 text-amber-300 animate-pulse" />
+                <TrendingUp className="w-4 h-4 text-amber-300" />
                 <span>Trending Media</span>
-                <span className="px-1.5 py-0.5 text-[10px] bg-black/40 rounded-full text-amber-200">Live TMDB</span>
+                <span className="flex h-2 w-2 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                </span>
               </button>
 
-              {/* Global Search & Lore Tab */}
+              {/* Global Media & Subtitles Tab */}
               <button
                 onClick={() => {
                   setActiveMode('entertainment');
@@ -865,9 +846,10 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
                       onClick={() => {
                         setCharacterCategory(tab.id as any);
                         setCharacterFilterSaved(false);
+                        setCharacterFilterFavorites(false);
                       }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all whitespace-nowrap ${
-                        characterCategory === tab.id && !characterFilterSaved
+                        characterCategory === tab.id && !characterFilterSaved && !characterFilterFavorites
                           ? 'bg-purple-600/30 border border-purple-500/50 text-purple-200 shadow-sm'
                           : 'bg-slate-950/60 border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
                       }`}
@@ -879,19 +861,52 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
                 })}
               </div>
 
-              {/* Saved to Repository Toggle & Refresh Button */}
+              {/* Favorites Toggle, Saved to Repository Toggle & Refresh Button */}
               <div className="flex items-center gap-2">
+                {/* Favorites Toggle */}
                 <button
-                  onClick={() => setCharacterFilterSaved(!characterFilterSaved)}
+                  onClick={() => {
+                    setCharacterFilterFavorites(!characterFilterFavorites);
+                    if (!characterFilterFavorites) setCharacterFilterSaved(false);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                    characterFilterFavorites
+                      ? 'bg-rose-500/20 border border-rose-500/50 text-rose-300 shadow-sm shadow-rose-500/20'
+                      : 'bg-slate-950/60 border border-slate-800 text-slate-400 hover:text-rose-300'
+                  }`}
+                  title="Filter Favorited Characters"
+                >
+                  <Heart className={`w-3.5 h-3.5 ${characterFilterFavorites ? 'fill-rose-500 text-rose-500' : 'text-rose-400'}`} />
+                  <span>Favorites ({favoritesCount})</span>
+                </button>
+
+                {/* Saved to Repo Toggle */}
+                <button
+                  onClick={() => {
+                    setCharacterFilterSaved(!characterFilterSaved);
+                    if (!characterFilterSaved) setCharacterFilterFavorites(false);
+                  }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
                     characterFilterSaved
-                      ? 'bg-amber-500/20 border border-amber-500/50 text-amber-300'
+                      ? 'bg-amber-500/20 border border-amber-500/50 text-amber-300 shadow-sm shadow-amber-500/20'
                       : 'bg-slate-950/60 border border-slate-800 text-slate-400 hover:text-amber-300'
                   }`}
                 >
                   <BookmarkCheck className="w-3.5 h-3.5 text-amber-400" />
-                  <span>My Saved Characters ({savedCharactersCount})</span>
+                  <span>Saved ({savedCharactersCount})</span>
                 </button>
+
+                {/* Open Visual Comparison Modal */}
+                {selectedForComparison.length >= 2 && (
+                  <button
+                    onClick={handleOpenComparisonModal}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-500/20 hover:brightness-110 transition-all animate-pulse"
+                    title="Open Side-by-Side Visual Comparison"
+                  >
+                    <Scale className="w-3.5 h-3.5 text-cyan-200" />
+                    <span>Compare ({selectedForComparison.length})</span>
+                  </button>
+                )}
 
                 <button
                   onClick={loadCharacterRepository}
@@ -1089,10 +1104,21 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
                       </span>
                     </h3>
                     <p className="text-xs text-slate-400">
-                      Fetches & stores character bios, visual traits, aesthetic color palettes, and provides 1-click import into ImageStudio and FilmStudio.
+                      Toggle favorites (stored in localStorage), compare multiple characters visually side-by-side, and import 1-click presets into ImageStudio and FilmStudio.
                     </p>
                   </div>
                 </div>
+
+                {/* Quick Compare Action if 2+ selected */}
+                {selectedForComparison.length >= 2 && (
+                  <button
+                    onClick={handleOpenComparisonModal}
+                    className="px-3.5 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-cyan-500/20 flex items-center gap-2 transition-all transform hover:scale-105"
+                  >
+                    <Scale className="w-4 h-4 text-cyan-200" />
+                    <span>Compare {selectedForComparison.length} Characters Side-by-Side</span>
+                  </button>
+                )}
               </div>
 
               {/* Character Cards Grid */}
@@ -1106,150 +1132,192 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
                 <div className="py-16 text-center text-slate-400">
                   <Users className="w-12 h-12 text-slate-600 mx-auto mb-3" />
                   <p className="text-base font-semibold text-slate-300">No characters found matching your filters</p>
-                  <p className="text-xs text-slate-500 mt-1">Try changing the category or searching for another character name</p>
+                  <p className="text-xs text-slate-500 mt-1">Try changing the category, clearing favorites filter, or searching for another character name</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {characterResults.map((char) => (
-                    <div
-                      key={char.id}
-                      className="group bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-purple-500/50 rounded-xl overflow-hidden shadow-lg transition-all flex flex-col justify-between hover:shadow-purple-500/10"
-                    >
-                      {/* Top Visual Section */}
-                      <div className="relative h-44 overflow-hidden bg-slate-950">
-                        <img
-                          src={char.avatarUrl}
-                          alt={char.name}
-                          className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500 opacity-90 group-hover:opacity-100"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent" />
+                  {characterResults.map((char) => {
+                    const isFav = char.isFavorite || favoriteIds.includes(char.id);
+                    const isCompared = selectedForComparison.some((c) => c.id === char.id);
 
-                        {/* Top Badges */}
-                        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 flex-wrap">
-                          <span className="px-2 py-0.5 bg-black/70 backdrop-blur-md border border-white/10 rounded-md text-[10px] font-bold text-white uppercase tracking-wider">
-                            {char.category}
-                          </span>
-                          <span className="px-2 py-0.5 bg-purple-950/80 backdrop-blur-md border border-purple-500/40 rounded-md text-[10px] font-medium text-purple-200">
-                            {char.franchise}
-                          </span>
-                        </div>
+                    return (
+                      <div
+                        key={char.id}
+                        className={`group bg-slate-900/80 hover:bg-slate-850 border rounded-xl overflow-hidden shadow-lg transition-all flex flex-col justify-between hover:shadow-purple-500/10 ${
+                          isCompared ? 'border-cyan-500/80 ring-2 ring-cyan-500/30' : 'border-slate-800 hover:border-purple-500/50'
+                        }`}
+                      >
+                        {/* Top Visual Section */}
+                        <div className="relative h-44 overflow-hidden bg-slate-950">
+                          <img
+                            src={char.avatarUrl}
+                            alt={char.name}
+                            className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500 opacity-90 group-hover:opacity-100"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent" />
 
-                        {/* Save / Bookmark Button */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleToggleSaveCharacter(char);
-                          }}
-                          className={`absolute top-2.5 right-2.5 p-1.5 rounded-lg backdrop-blur-md border transition-all ${
-                            char.isSavedToRepo
-                              ? 'bg-amber-500/30 border-amber-500 text-amber-300'
-                              : 'bg-black/60 border-white/20 text-white/70 hover:text-amber-300 hover:bg-black/80'
-                          }`}
-                          title={char.isSavedToRepo ? 'Saved in Repository' : 'Save to Character Repository'}
-                        >
-                          <Bookmark className="w-4 h-4 fill-current" />
-                        </button>
-
-                        {/* Character Name & Role Overlay */}
-                        <div className="absolute bottom-2.5 left-3 right-3">
-                          <h4 className="text-base font-bold text-white group-hover:text-purple-300 transition-colors leading-tight">
-                            {char.name}
-                          </h4>
-                          <p className="text-xs text-purple-300/90 line-clamp-1 font-medium">
-                            {char.characterRole} • <span className="text-slate-400">{char.actorName}</span>
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Middle Body: Visual Traits & Palette */}
-                      <div className="p-3.5 space-y-3 flex-1 flex flex-col justify-between">
-                        <div>
-                          {/* Visual Traits Summary */}
-                          <div className="space-y-1.5 text-xs text-slate-300 bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
-                            <div className="flex items-start gap-1.5">
-                              <Sparkle className="w-3.5 h-3.5 text-purple-400 shrink-0 mt-0.5" />
-                              <span className="line-clamp-2 text-slate-300 leading-snug">
-                                <strong className="text-slate-100">Outfit:</strong> {char.visualTraits?.outfit || 'Signature costume'}
-                              </span>
-                            </div>
-                            <div className="flex items-start gap-1.5">
-                              <Eye className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
-                              <span className="line-clamp-1 text-slate-300">
-                                <strong className="text-slate-100">Features:</strong> {char.visualTraits?.hairAndEyes || 'Distinctive gaze'}
-                              </span>
-                            </div>
+                          {/* Top Left Badges */}
+                          <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 flex-wrap">
+                            <span className="px-2 py-0.5 bg-black/70 backdrop-blur-md border border-white/10 rounded-md text-[10px] font-bold text-white uppercase tracking-wider">
+                              {char.category}
+                            </span>
+                            <span className="px-2 py-0.5 bg-purple-950/80 backdrop-blur-md border border-purple-500/40 rounded-md text-[10px] font-medium text-purple-200">
+                              {char.franchise}
+                            </span>
                           </div>
 
-                          {/* Color Palette Swatches */}
-                          {char.visualTraits?.colorPalette && char.visualTraits.colorPalette.length > 0 && (
-                            <div className="flex items-center justify-between pt-2">
-                              <span className="text-[11px] text-slate-400 font-medium flex items-center gap-1">
-                                <Palette className="w-3 h-3 text-pink-400" /> Color Palette:
-                              </span>
-                              <div className="flex items-center gap-1">
-                                {char.visualTraits.colorPalette.slice(0, 5).map((hex, idx) => (
-                                  <button
-                                    key={idx}
-                                    onClick={() => {
-                                      navigator.clipboard.writeText(hex);
-                                      setPopulatedToast(`Copied color ${hex} to clipboard!`);
-                                      setTimeout(() => setPopulatedToast(null), 2000);
-                                    }}
-                                    className="w-4 h-4 rounded-full border border-white/20 hover:scale-125 transition-transform"
-                                    style={{ backgroundColor: hex }}
-                                    title={`Click to copy ${hex}`}
-                                  />
-                                ))}
+                          {/* Top Right Action Controls (Favorite Heart & Save Bookmark) */}
+                          <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+                            {/* Favorite Heart Toggle */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleFavorite(char);
+                              }}
+                              className={`p-1.5 rounded-lg backdrop-blur-md border transition-all ${
+                                isFav
+                                  ? 'bg-rose-500/30 border-rose-500 text-rose-300 shadow-md shadow-rose-500/30'
+                                  : 'bg-black/60 border-white/20 text-white/70 hover:text-rose-400 hover:bg-black/80'
+                              }`}
+                              title={isFav ? 'Remove from Favorites' : 'Add to Favorites'}
+                            >
+                              <Heart className={`w-4 h-4 transition-transform active:scale-125 ${isFav ? 'fill-rose-500 text-rose-400' : ''}`} />
+                            </button>
+
+                            {/* Bookmark Save Button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleSaveCharacter(char);
+                              }}
+                              className={`p-1.5 rounded-lg backdrop-blur-md border transition-all ${
+                                char.isSavedToRepo
+                                  ? 'bg-amber-500/30 border-amber-500 text-amber-300 shadow-md shadow-amber-500/30'
+                                  : 'bg-black/60 border-white/20 text-white/70 hover:text-amber-300 hover:bg-black/80'
+                              }`}
+                              title={char.isSavedToRepo ? 'Saved in Repository' : 'Save to Character Repository'}
+                            >
+                              <Bookmark className={`w-4 h-4 ${char.isSavedToRepo ? 'fill-amber-400 text-amber-400' : ''}`} />
+                            </button>
+                          </div>
+
+                          {/* Character Name & Role Overlay */}
+                          <div className="absolute bottom-2.5 left-3 right-3 flex items-end justify-between gap-2">
+                            <div>
+                              <h4 className="text-base font-bold text-white group-hover:text-purple-300 transition-colors leading-tight flex items-center gap-1.5">
+                                <span>{char.name}</span>
+                                {isFav && <span className="text-xs text-rose-400 font-normal">❤️</span>}
+                              </h4>
+                              <p className="text-xs text-purple-300/90 line-clamp-1 font-medium">
+                                {char.characterRole} • <span className="text-slate-400">{char.actorName}</span>
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Middle Body: Visual Traits & Palette */}
+                        <div className="p-3.5 space-y-3 flex-1 flex flex-col justify-between">
+                          <div>
+                            {/* Visual Traits Summary */}
+                            <div className="space-y-1.5 text-xs text-slate-300 bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+                              <div className="flex items-start gap-1.5">
+                                <Sparkle className="w-3.5 h-3.5 text-purple-400 shrink-0 mt-0.5" />
+                                <span className="line-clamp-2 text-slate-300 leading-snug">
+                                  <strong className="text-slate-100">Outfit:</strong> {char.visualTraits?.outfit || 'Signature costume'}
+                                </span>
+                              </div>
+                              <div className="flex items-start gap-1.5">
+                                <Eye className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+                                <span className="line-clamp-1 text-slate-300">
+                                  <strong className="text-slate-100">Features:</strong> {char.visualTraits?.hairAndEyes || 'Distinctive gaze'}
+                                </span>
                               </div>
                             </div>
-                          )}
-                        </div>
 
-                        {/* 1-Click Action Buttons for ImageStudio, FilmStudio, and Inspector */}
-                        <div className="pt-2 border-t border-slate-800 space-y-2">
-                          <div className="grid grid-cols-2 gap-1.5">
-                            {/* Import to Image Studio */}
-                            <button
-                              onClick={() => handleLaunchStudioWithCharacter(char, 'image_studio')}
-                              className="px-2.5 py-2 bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/40 text-indigo-200 hover:text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm"
-                            >
-                              <ImageIcon className="w-3.5 h-3.5 text-indigo-400" />
-                              <span>ImageStudio</span>
-                            </button>
+                            {/* Color Palette Swatches & Compare Button */}
+                            <div className="flex items-center justify-between pt-2">
+                              {char.visualTraits?.colorPalette && char.visualTraits.colorPalette.length > 0 ? (
+                                <div className="flex items-center gap-1">
+                                  <Palette className="w-3 h-3 text-pink-400 mr-1" />
+                                  {char.visualTraits.colorPalette.slice(0, 4).map((hex, idx) => (
+                                    <button
+                                      key={idx}
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(hex);
+                                        setPopulatedToast(`Copied color ${hex} to clipboard!`);
+                                        setTimeout(() => setPopulatedToast(null), 2000);
+                                      }}
+                                      className="w-3.5 h-3.5 rounded-full border border-white/20 hover:scale-125 transition-transform"
+                                      style={{ backgroundColor: hex }}
+                                      title={`Click to copy ${hex}`}
+                                    />
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-[11px] text-slate-500 font-mono">PBR Cinematic</span>
+                              )}
 
-                            {/* Import to Film Studio */}
-                            <button
-                              onClick={() => handleLaunchStudioWithCharacter(char, 'film_studio')}
-                              className="px-2.5 py-2 bg-purple-600/20 hover:bg-purple-600/40 border border-purple-500/40 text-purple-200 hover:text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm"
-                            >
-                              <Film className="w-3.5 h-3.5 text-purple-400" />
-                              <span>FilmStudio</span>
-                            </button>
+                              {/* Visual Comparison Checkbox Button */}
+                              <button
+                                onClick={() => handleToggleCompare(char)}
+                                className={`px-2 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-all ${
+                                  isCompared
+                                    ? 'bg-cyan-500/20 border border-cyan-400 text-cyan-300 shadow-sm'
+                                    : 'bg-slate-950/80 border border-slate-700 text-slate-400 hover:text-cyan-300 hover:border-cyan-500/40'
+                                }`}
+                              >
+                                <Scale className="w-3 h-3" />
+                                <span>{isCompared ? 'Comparing' : '+ Compare'}</span>
+                              </button>
+                            </div>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-1.5">
-                            {/* Import to 3D Engine */}
-                            <button
-                              onClick={() => handleLaunchStudioWithCharacter(char, '3d_engine')}
-                              className="px-2 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-lg text-[11px] font-medium flex items-center justify-center gap-1 transition-colors"
-                            >
-                              <Box className="w-3 h-3 text-cyan-400" />
-                              <span>3D Rig</span>
-                            </button>
+                          {/* 1-Click Action Buttons for ImageStudio, FilmStudio, and Inspector */}
+                          <div className="pt-2 border-t border-slate-800 space-y-2">
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {/* Import to Image Studio */}
+                              <button
+                                onClick={() => handleLaunchStudioWithCharacter(char, 'image_studio')}
+                                className="px-2.5 py-2 bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/40 text-indigo-200 hover:text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                              >
+                                <ImageIcon className="w-3.5 h-3.5 text-indigo-400" />
+                                <span>ImageStudio</span>
+                              </button>
 
-                            {/* Inspect Profile */}
-                            <button
-                              onClick={() => setSelectedCharacter(char)}
-                              className="px-2 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-lg text-[11px] font-medium flex items-center justify-center gap-1 transition-colors"
-                            >
-                              <Eye className="w-3 h-3 text-amber-400" />
-                              <span>Inspect Bio</span>
-                            </button>
+                              {/* Import to Film Studio */}
+                              <button
+                                onClick={() => handleLaunchStudioWithCharacter(char, 'film_studio')}
+                                className="px-2.5 py-2 bg-purple-600/20 hover:bg-purple-600/40 border border-purple-500/40 text-purple-200 hover:text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                              >
+                                <Film className="w-3.5 h-3.5 text-purple-400" />
+                                <span>FilmStudio</span>
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {/* Import to 3D Engine */}
+                              <button
+                                onClick={() => handleLaunchStudioWithCharacter(char, '3d_engine')}
+                                className="px-2 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-lg text-[11px] font-medium flex items-center justify-center gap-1 transition-colors"
+                              >
+                                <Box className="w-3 h-3 text-cyan-400" />
+                                <span>3D Rig</span>
+                              </button>
+
+                              {/* Inspect Profile */}
+                              <button
+                                onClick={() => setSelectedCharacter(char)}
+                                className="px-2 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-lg text-[11px] font-medium flex items-center justify-center gap-1 transition-colors"
+                              >
+                                <Eye className="w-3 h-3 text-amber-400" />
+                                <span>Inspect Bio</span>
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1398,7 +1466,68 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
         </div>
 
         {/* ============================================================ */}
-        {/* CHARACTER DEEP DIVE INSPECTOR MODAL / DRAWER */}
+        {/* FLOATING VISUAL COMPARISON BOTTOM DOCK */}
+        {/* ============================================================ */}
+        {selectedForComparison.length > 0 && (
+          <div className="p-3 bg-gradient-to-r from-slate-950 via-indigo-950 to-slate-950 border-t border-cyan-500/30 flex items-center justify-between flex-wrap gap-3 animate-fadeIn">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <Scale className="w-4 h-4 text-cyan-400 animate-pulse" />
+                <span className="text-xs font-bold text-cyan-200">
+                  Visual Comparison ({selectedForComparison.length}/4 Selected):
+                </span>
+              </div>
+
+              {/* Selected Character Avatars */}
+              <div className="flex items-center gap-2">
+                {selectedForComparison.map((c) => (
+                  <div key={c.id} className="relative group">
+                    <img
+                      src={c.avatarUrl}
+                      alt={c.name}
+                      className="w-8 h-8 rounded-lg object-cover border border-cyan-400 shadow-md"
+                    />
+                    <button
+                      onClick={() => handleToggleCompare(c)}
+                      className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 opacity-80 hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                    <div className="hidden group-hover:block absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-black/90 text-white text-[10px] px-2 py-0.5 rounded whitespace-nowrap z-50">
+                      {c.name}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSelectedForComparison([])}
+                className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-400 hover:text-slate-200 text-xs rounded-lg transition-colors flex items-center gap-1"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Clear</span>
+              </button>
+
+              <button
+                onClick={handleOpenComparisonModal}
+                disabled={selectedForComparison.length < 2}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 shadow-lg transition-all ${
+                  selectedForComparison.length >= 2
+                    ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-cyan-500/20 ring-1 ring-cyan-400/50'
+                    : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                }`}
+              >
+                <Scale className="w-4 h-4" />
+                <span>Compare Visual Traits Now</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* CHARACTER DEEP DIVE INSPECTOR MODAL */}
         {/* ============================================================ */}
         {selectedCharacter && (
           <div
@@ -1417,12 +1546,29 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
                   className="w-full h-full object-cover object-center opacity-80"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/60 to-transparent" />
-                <button
-                  onClick={() => setSelectedCharacter(null)}
-                  className="absolute top-4 right-4 p-2 bg-black/60 hover:bg-black/80 border border-white/20 text-white rounded-xl"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                
+                <div className="absolute top-4 right-4 flex items-center gap-2">
+                  {/* Favorite Toggle inside inspector */}
+                  <button
+                    onClick={() => handleToggleFavorite(selectedCharacter)}
+                    className={`p-2 rounded-xl backdrop-blur-md border transition-all ${
+                      selectedCharacter.isFavorite || favoriteIds.includes(selectedCharacter.id)
+                        ? 'bg-rose-500/30 border-rose-500 text-rose-300'
+                        : 'bg-black/60 border-white/20 text-white/80 hover:text-rose-400'
+                    }`}
+                    title="Toggle Favorite"
+                  >
+                    <Heart className={`w-5 h-5 ${selectedCharacter.isFavorite || favoriteIds.includes(selectedCharacter.id) ? 'fill-rose-500 text-rose-400' : ''}`} />
+                  </button>
+
+                  <button
+                    onClick={() => setSelectedCharacter(null)}
+                    className="p-2 bg-black/60 hover:bg-black/80 border border-white/20 text-white rounded-xl"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
                 <div className="absolute bottom-4 left-6 right-6 flex items-end justify-between gap-4">
                   <div className="flex items-center gap-4">
                     <img
@@ -1436,6 +1582,11 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
                           {selectedCharacter.category}
                         </span>
                         <span className="text-xs text-purple-200 font-semibold">{selectedCharacter.franchise}</span>
+                        {(selectedCharacter.isFavorite || favoriteIds.includes(selectedCharacter.id)) && (
+                          <span className="px-2 py-0.5 bg-rose-500/20 text-rose-300 border border-rose-500/40 rounded-full text-[10px] font-bold flex items-center gap-1">
+                            <Heart className="w-3 h-3 fill-rose-500 text-rose-500" /> Favorite
+                          </span>
+                        )}
                       </div>
                       <h3 className="text-xl sm:text-2xl font-black text-white">{selectedCharacter.name}</h3>
                       <p className="text-xs text-slate-300">{selectedCharacter.characterRole} • {selectedCharacter.actorName}</p>
@@ -1603,17 +1754,31 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
 
               {/* Inspector Footer Actions */}
               <div className="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between flex-wrap gap-3">
-                <button
-                  onClick={() => handleToggleSaveCharacter(selectedCharacter)}
-                  className={`px-4 py-2.5 rounded-xl border font-semibold flex items-center gap-2 text-xs sm:text-sm transition-all ${
-                    selectedCharacter.isSavedToRepo
-                      ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                      : 'bg-slate-900 border-slate-700 text-slate-200 hover:bg-slate-800'
-                  }`}
-                >
-                  <Bookmark className="w-4 h-4 fill-current" />
-                  <span>{selectedCharacter.isSavedToRepo ? 'Saved in Repository' : 'Save to Character Repository'}</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleToggleSaveCharacter(selectedCharacter)}
+                    className={`px-4 py-2.5 rounded-xl border font-semibold flex items-center gap-2 text-xs sm:text-sm transition-all ${
+                      selectedCharacter.isSavedToRepo
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                        : 'bg-slate-900 border-slate-700 text-slate-200 hover:bg-slate-800'
+                    }`}
+                  >
+                    <Bookmark className="w-4 h-4 fill-current" />
+                    <span>{selectedCharacter.isSavedToRepo ? 'Saved in Repository' : 'Save to Character Repository'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleToggleCompare(selectedCharacter)}
+                    className={`px-3 py-2.5 rounded-xl border font-semibold flex items-center gap-1.5 text-xs sm:text-sm transition-all ${
+                      selectedForComparison.some((c) => c.id === selectedCharacter.id)
+                        ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300'
+                        : 'bg-slate-900 border-slate-700 text-slate-200 hover:text-cyan-300'
+                    }`}
+                  >
+                    <Scale className="w-4 h-4" />
+                    <span>{selectedForComparison.some((c) => c.id === selectedCharacter.id) ? 'In Compare' : 'Add to Compare'}</span>
+                  </button>
+                </div>
 
                 <div className="flex items-center gap-2">
                   <button
@@ -1643,11 +1808,356 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
           </div>
         )}
 
+        {/* ============================================================ */}
+        {/* DEDICATED VISUAL COMPARISON MODAL */}
+        {/* ============================================================ */}
+        {isComparisonModalOpen && selectedForComparison.length >= 2 && (
+          <div
+            className="fixed inset-0 z-70 bg-black/95 backdrop-blur-2xl flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-fadeIn"
+            onClick={() => setIsComparisonModalOpen(false)}
+          >
+            <div
+              className="w-full max-w-6xl bg-slate-900 border border-cyan-500/40 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Comparison Header */}
+              <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-950 via-cyan-950/50 to-indigo-950 border-b border-cyan-500/30 flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-300">
+                    <Scale className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                      <span>Visual Trait Comparison Matrix</span>
+                      <span className="px-2 py-0.5 text-[10px] bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 rounded-full font-bold">
+                        {selectedForComparison.length} Characters Side-by-Side
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Comparing aesthetic archetypes, color palettes, visual signatures, and generative crossover prompts.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleLaunchCrossoverToStudio('image_studio')}
+                    className="px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:brightness-110 text-white text-xs font-bold rounded-lg shadow-md flex items-center gap-1.5"
+                  >
+                    <ImageIcon className="w-3.5 h-3.5" />
+                    <span>Crossover in ImageStudio</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleLaunchCrossoverToStudio('film_studio')}
+                    className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:brightness-110 text-white text-xs font-bold rounded-lg shadow-md flex items-center gap-1.5"
+                  >
+                    <Film className="w-3.5 h-3.5" />
+                    <span>Crossover in FilmStudio</span>
+                  </button>
+
+                  <button
+                    onClick={() => setIsComparisonModalOpen(false)}
+                    className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Comparison Section Tabs */}
+              <div className="flex items-center bg-slate-950 px-6 border-b border-slate-800 gap-2 text-xs font-semibold overflow-x-auto">
+                {[
+                  { id: 'visual_matrix', label: 'Visual Traits & Archetypes' },
+                  { id: 'color_palette', label: 'Color Harmony & Swatches' },
+                  { id: 'abilities', label: 'Abilities & Lore' },
+                  { id: 'studio_prompts', label: 'Studio Presets' },
+                  { id: 'crossover', label: '⚔️ Unified Crossover Arena' },
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setComparisonActiveTab(t.id as any)}
+                    className={`py-3 px-3.5 border-b-2 transition-all whitespace-nowrap ${
+                      comparisonActiveTab === t.id
+                        ? 'border-cyan-400 text-cyan-300 font-bold'
+                        : 'border-transparent text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Comparison Multi-Column Body */}
+              <div className="p-6 overflow-y-auto space-y-6">
+                {/* 1. Visual Traits Multi-Column Comparison */}
+                {comparisonActiveTab === 'visual_matrix' && (
+                  <div className={`grid grid-cols-1 md:grid-cols-${selectedForComparison.length} gap-4`}>
+                    {selectedForComparison.map((char) => (
+                      <div key={char.id} className="bg-slate-950/80 border border-slate-800 rounded-xl overflow-hidden p-4 space-y-4">
+                        {/* Avatar & Header */}
+                        <div className="relative h-44 rounded-lg overflow-hidden bg-slate-900 border border-slate-700">
+                          <img src={char.avatarUrl} alt={char.name} className="w-full h-full object-cover object-top" />
+                          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent" />
+                          <div className="absolute bottom-2 left-2 right-2">
+                            <span className="px-2 py-0.5 bg-purple-900/80 text-purple-200 text-[10px] font-bold rounded">
+                              {char.category.toUpperCase()}
+                            </span>
+                            <h4 className="text-base font-bold text-white leading-tight mt-1">{char.name}</h4>
+                            <p className="text-xs text-slate-400">{char.franchise}</p>
+                          </div>
+                        </div>
+
+                        {/* Traits Matrix */}
+                        <div className="space-y-2 text-xs">
+                          <div className="p-2.5 bg-slate-900/90 rounded-lg border border-slate-800">
+                            <span className="text-purple-400 font-bold text-[10px] uppercase block mb-0.5">Signature Outfit</span>
+                            <p className="text-slate-200">{char.visualTraits.outfit}</p>
+                          </div>
+                          <div className="p-2.5 bg-slate-900/90 rounded-lg border border-slate-800">
+                            <span className="text-cyan-400 font-bold text-[10px] uppercase block mb-0.5">Hair, Eyes & Silhouette</span>
+                            <p className="text-slate-200">{char.visualTraits.hairAndEyes}</p>
+                          </div>
+                          <div className="p-2.5 bg-slate-900/90 rounded-lg border border-slate-800">
+                            <span className="text-amber-400 font-bold text-[10px] uppercase block mb-0.5">Iconic Prop / Weapon</span>
+                            <p className="text-slate-200">{char.visualTraits.iconicItem}</p>
+                          </div>
+                          <div className="p-2.5 bg-slate-900/90 rounded-lg border border-slate-800">
+                            <span className="text-pink-400 font-bold text-[10px] uppercase block mb-0.5">Aesthetic Archetype</span>
+                            <p className="text-slate-200">{char.visualTraits.aestheticArchetype}</p>
+                          </div>
+                        </div>
+
+                        {/* Quick 1-click import buttons */}
+                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800">
+                          <button
+                            onClick={() => {
+                              handleLaunchStudioWithCharacter(char, 'image_studio');
+                              setIsComparisonModalOpen(false);
+                            }}
+                            className="px-2 py-1.5 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1"
+                          >
+                            <ImageIcon className="w-3 h-3" /> ImageStudio
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleLaunchStudioWithCharacter(char, 'film_studio');
+                              setIsComparisonModalOpen(false);
+                            }}
+                            className="px-2 py-1.5 bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1"
+                          >
+                            <Film className="w-3 h-3" /> FilmStudio
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 2. Color Harmony & Swatches Comparison */}
+                {comparisonActiveTab === 'color_palette' && (
+                  <div className="space-y-6">
+                    <div className={`grid grid-cols-1 md:grid-cols-${selectedForComparison.length} gap-4`}>
+                      {selectedForComparison.map((char) => (
+                        <div key={char.id} className="p-4 bg-slate-950/80 rounded-xl border border-slate-800 space-y-3">
+                          <div className="flex items-center gap-3">
+                            <img src={char.avatarUrl} alt={char.name} className="w-12 h-12 rounded-lg object-cover border border-slate-700" />
+                            <div>
+                              <h4 className="font-bold text-white text-sm">{char.name}</h4>
+                              <p className="text-xs text-slate-400">{char.visualTraits.aestheticArchetype}</p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <span className="text-[11px] font-bold text-slate-300">Palette Swatches:</span>
+                            <div className="space-y-2">
+                              {char.visualTraits.colorPalette.map((hex, idx) => (
+                                <div key={idx} className="flex items-center justify-between bg-slate-900 px-3 py-2 rounded-lg border border-slate-800">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-6 h-6 rounded-md border border-white/20" style={{ backgroundColor: hex }} />
+                                    <span className="font-mono text-xs text-slate-200">{hex}</span>
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(hex);
+                                      setPopulatedToast(`Copied ${hex}!`);
+                                      setTimeout(() => setPopulatedToast(null), 1500);
+                                    }}
+                                    className="p-1 text-slate-400 hover:text-white"
+                                  >
+                                    <Copy className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Abilities & Lore Comparison */}
+                {comparisonActiveTab === 'abilities' && (
+                  <div className={`grid grid-cols-1 md:grid-cols-${selectedForComparison.length} gap-4`}>
+                    {selectedForComparison.map((char) => (
+                      <div key={char.id} className="p-4 bg-slate-950/80 rounded-xl border border-slate-800 space-y-3">
+                        <div className="flex items-center gap-3">
+                          <img src={char.avatarUrl} alt={char.name} className="w-12 h-12 rounded-lg object-cover border border-slate-700" />
+                          <div>
+                            <h4 className="font-bold text-white text-sm">{char.name}</h4>
+                            <p className="text-xs text-slate-400">{char.franchise}</p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <span className="text-xs font-bold text-amber-300">Powers & Signature Moves:</span>
+                          <div className="flex flex-col gap-1.5">
+                            {char.abilities.map((ability, idx) => (
+                              <div key={idx} className="px-3 py-1.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-200 font-medium">
+                                ⚡ {ability}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-slate-900 rounded-lg border border-slate-800 space-y-1">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase">Personality & Drive</span>
+                          <p className="text-xs text-slate-300">{char.personality}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 4. Studio Presets Comparison */}
+                {comparisonActiveTab === 'studio_prompts' && (
+                  <div className={`grid grid-cols-1 md:grid-cols-${selectedForComparison.length} gap-4`}>
+                    {selectedForComparison.map((char) => (
+                      <div key={char.id} className="p-4 bg-slate-950/80 rounded-xl border border-slate-800 space-y-3">
+                        <h4 className="font-bold text-white text-sm flex items-center gap-2">
+                          <span>{char.name}</span>
+                        </h4>
+
+                        <div className="p-3 bg-slate-900 rounded-lg border border-slate-800 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-indigo-300 uppercase">ImageStudio Prompt</span>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(char.studioPresets.imageStudioPrompt);
+                                setPopulatedToast(`Copied ${char.name}'s image prompt!`);
+                                setTimeout(() => setPopulatedToast(null), 1500);
+                              }}
+                              className="text-xs text-indigo-400 hover:text-white"
+                            >
+                              <Copy className="w-3 h-3" />
+                            </button>
+                          </div>
+                          <p className="text-[11px] text-slate-300 font-mono line-clamp-4">{char.studioPresets.imageStudioPrompt}</p>
+                        </div>
+
+                        <div className="p-3 bg-slate-900 rounded-lg border border-slate-800 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-purple-300 uppercase">Screenplay Scene</span>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(char.studioPresets.filmStudioScriptPrompt);
+                                setPopulatedToast(`Copied ${char.name}'s screenplay script!`);
+                                setTimeout(() => setPopulatedToast(null), 1500);
+                              }}
+                              className="text-xs text-purple-400 hover:text-white"
+                            >
+                              <Copy className="w-3 h-3" />
+                            </button>
+                          </div>
+                          <pre className="text-[11px] text-slate-300 font-mono line-clamp-4 whitespace-pre-wrap">{char.studioPresets.filmStudioScriptPrompt}</pre>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 5. Fused Crossover Arena */}
+                {comparisonActiveTab === 'crossover' && crossoverResult && (
+                  <div className="p-5 bg-gradient-to-r from-purple-950/60 via-slate-950 to-indigo-950/60 rounded-xl border border-purple-500/30 space-y-5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Swords className="w-5 h-5 text-amber-400" />
+                        <h4 className="text-base font-bold text-white">{crossoverResult.summary}</h4>
+                      </div>
+                    </div>
+
+                    {/* ImageStudio Crossover Prompt */}
+                    <div className="p-4 bg-slate-900/90 rounded-xl border border-indigo-500/40 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-indigo-300 text-xs flex items-center gap-1.5">
+                          <ImageIcon className="w-4 h-4" /> 8K Crossover Battle Art Prompt
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(crossoverResult.imageStudioPrompt);
+                              setPopulatedToast('Copied Crossover Image prompt!');
+                              setTimeout(() => setPopulatedToast(null), 1500);
+                            }}
+                            className="px-2.5 py-1 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 rounded-md text-xs font-semibold flex items-center gap-1"
+                          >
+                            <Copy className="w-3 h-3" /> Copy
+                          </button>
+                          <button
+                            onClick={() => handleLaunchCrossoverToStudio('image_studio')}
+                            className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-xs font-semibold flex items-center gap-1 shadow-md shadow-indigo-500/30"
+                          >
+                            <Play className="w-3 h-3" /> Generate in ImageStudio
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-200 font-mono bg-slate-950 p-3 rounded-lg border border-slate-800">
+                        {crossoverResult.imageStudioPrompt}
+                      </p>
+                    </div>
+
+                    {/* FilmStudio Crossover Screenplay */}
+                    <div className="p-4 bg-slate-900/90 rounded-xl border border-purple-500/40 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-purple-300 text-xs flex items-center gap-1.5">
+                          <Film className="w-4 h-4" /> Multiverse Showdown Screenplay Script
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(crossoverResult.filmStudioScriptPrompt);
+                              setPopulatedToast('Copied Crossover Screenplay!');
+                              setTimeout(() => setPopulatedToast(null), 1500);
+                            }}
+                            className="px-2.5 py-1 bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 rounded-md text-xs font-semibold flex items-center gap-1"
+                          >
+                            <Copy className="w-3 h-3" /> Copy
+                          </button>
+                          <button
+                            onClick={() => handleLaunchCrossoverToStudio('film_studio')}
+                            className="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded-md text-xs font-semibold flex items-center gap-1 shadow-md shadow-purple-500/30"
+                          >
+                            <Play className="w-3 h-3" /> Open in FilmStudio
+                          </button>
+                        </div>
+                      </div>
+                      <pre className="text-xs text-slate-200 font-mono bg-slate-950 p-3 rounded-lg border border-slate-800 whitespace-pre-wrap">
+                        {crossoverResult.filmStudioScriptPrompt}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Modal Footer */}
         <div className="p-3 sm:p-4 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between text-xs text-slate-400">
           <div className="flex items-center gap-4">
             <span>
-              Pillars: <strong className="text-purple-400">Character Repository</strong> • <strong className="text-amber-400">Trending TMDB</strong> • <strong className="text-cyan-400">Global Lore</strong> • <strong className="text-indigo-400">30+ Studios</strong>
+              Pillars: <strong className="text-purple-400">Character Repository (with Favorites & Compare)</strong> • <strong className="text-amber-400">Trending TMDB</strong> • <strong className="text-cyan-400">Global Lore</strong> • <strong className="text-indigo-400">30+ Studios</strong>
             </span>
           </div>
           <div className="flex items-center gap-2 font-mono text-[11px]">

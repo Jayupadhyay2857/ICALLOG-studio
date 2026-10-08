@@ -23,6 +23,7 @@ import {
   Video,
   Mic,
   BookOpen,
+  ChevronLeft,
   ChevronRight,
   Type,
   Smile,
@@ -114,6 +115,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   const modalInputRef = useRef<HTMLInputElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const resultsContainerRef = useRef<HTMLDivElement>(null);
+  const scrollNavRef = useRef<HTMLDivElement>(null);
+
+  const scrollNavTabs = (direction: 'left' | 'right') => {
+    if (scrollNavRef.current) {
+      scrollNavRef.current.scrollBy({ left: direction === 'left' ? -280 : 280, behavior: 'smooth' });
+    }
+  };
 
   useEffect(() => {
     const unsubscribe = subscribeVoiceNav((st) => setVoiceNavState(st));
@@ -1216,6 +1224,22 @@ Thank you for building with AI Studio!
               </span>
             </button>
 
+            {/* Mobile Spotlight Search Trigger Button */}
+            <button
+              id="navbar-mobile-search-btn"
+              onClick={() => {
+                if (openGlobalSearch) {
+                  openGlobalSearch();
+                } else {
+                  setIsSearchOpen(true);
+                }
+              }}
+              title="Search Studios & Tools (Ctrl+K)"
+              className="md:hidden p-1.5 rounded-lg bg-slate-900/90 hover:bg-slate-800 text-cyan-300 hover:text-white border border-slate-700/80 hover:border-cyan-400 transition-all shadow-sm flex items-center justify-center shrink-0"
+            >
+              <Search className="w-3.5 h-3.5" />
+            </button>
+
             {/* Quick Pro Camera Button */}
             <button
               id="navbar-quick-camera-btn"
@@ -1363,42 +1387,71 @@ Thank you for building with AI Studio!
           </div>
         </div>
 
-        {/* Secondary Sub-Navbar Bar: Desktop Navigation Tabs */}
-        <div className="hidden lg:flex items-center justify-between py-2 border-t border-slate-800/80 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden gap-1">
-          <nav className="flex items-center gap-1 shrink-0">
-            {tabs.map((tab) => {
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  id={`tab-btn-${tab.id}`}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 shrink-0 whitespace-nowrap ${
-                    isActive
-                      ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white shadow-md shadow-indigo-600/30 font-bold'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-                  }`}
-                >
-                  <span>{tab.icon}</span>
-                  <span>{tab.label}</span>
-                  {tab.badge && (
-                    <span
-                      className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold ${
-                        isActive ? 'bg-white/20 text-white' : 'bg-indigo-500/20 text-cyan-300'
-                      }`}
-                    >
-                      {tab.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
+        {/* Secondary Sub-Navbar Bar with Left/Right Scroll Buttons & Thick Glowing Scrollbar Slider on Navigation Bar */}
+        <div className="flex items-center gap-1.5 py-2 border-t border-slate-800/80 bg-[#090d16]/95 px-2 relative">
+          {/* Navigation Bar Slider Label Badge */}
+          <div className="hidden md:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 text-[10px] font-mono font-bold shrink-0">
+            <span>⇄ Studios Slider</span>
+          </div>
 
-          <div className="flex items-center gap-3 text-xs font-mono text-slate-400 shrink-0">
+          {/* Left Scroll Button */}
+          <button
+            onClick={() => scrollNavTabs('left')}
+            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-400 hover:text-white border border-slate-700/80 shadow-md shrink-0 flex items-center justify-center transition-all hover:scale-105 cursor-pointer"
+            title="Scroll Left (बाएँ स्क्रॉल करें)"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          {/* Scrollable Tabs Container with Thick Glowing Scrollbar Slider */}
+          <div
+            ref={scrollNavRef}
+            className="flex items-center gap-1 overflow-x-auto [&::-webkit-scrollbar]:h-3.5 [&::-webkit-scrollbar-thumb]:bg-gradient-to-r [&::-webkit-scrollbar-thumb]:from-cyan-500 [&::-webkit-scrollbar-thumb]:to-indigo-500 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-slate-950/90 border border-slate-800/80 rounded-2xl px-2.5 py-1.5 scroll-smooth flex-1 shadow-inner"
+          >
+            <nav className="flex items-center gap-1 shrink-0">
+              {tabs.map((tab) => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    id={`tab-btn-${tab.id}`}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 shrink-0 whitespace-nowrap ${
+                      isActive
+                        ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white shadow-md shadow-indigo-600/30 font-bold'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                    }`}
+                  >
+                    <span className="text-sm">{tab.icon}</span>
+                    <span className="text-[11px] sm:text-xs">{tab.label}</span>
+                    {tab.badge && (
+                      <span
+                        className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold ${
+                          isActive ? 'bg-white/20 text-white' : 'bg-indigo-500/20 text-cyan-300'
+                        }`}
+                      >
+                        {tab.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+
+          {/* Right Scroll Button */}
+          <button
+            onClick={() => scrollNavTabs('right')}
+            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-400 hover:text-white border border-slate-700/80 shadow-md shrink-0 flex items-center justify-center transition-all hover:scale-105 cursor-pointer"
+            title="Scroll Right (दाएँ स्क्रॉल करें)"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+
+          <div className="hidden sm:flex items-center gap-2 text-xs font-mono text-slate-400 shrink-0 pl-2 border-l border-slate-800">
             <button
               onClick={openHistoryModal}
-              className="hover:text-cyan-300 flex items-center gap-1 transition-colors"
+              className="hover:text-cyan-300 flex items-center gap-1 transition-colors px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 shadow-sm"
             >
               <HardDrive className="w-3.5 h-3.5 text-cyan-400" />
               <span>Vault</span>

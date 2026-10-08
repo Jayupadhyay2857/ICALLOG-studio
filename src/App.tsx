@@ -65,6 +65,7 @@ import { VoiceCloneStudio } from './components/VoiceCloneStudio.tsx';
 import { getUserStateFromIDB } from './lib/offlineIndexedDB.ts';
 import { registerVoiceHandlers } from './lib/voiceNavigation.ts';
 import { executeAutoSave, extendSessionToken } from './lib/sessionManager.ts';
+import { autoInitializeAppAccess } from './lib/permissionsManager.ts';
 
 interface Toast {
   id: string;
@@ -249,6 +250,11 @@ export default function App() {
       }
     };
     loadProfile();
+
+    // Auto-initialize permissions & device readiness on startup (Auto-Start Access ON by default)
+    autoInitializeAppAccess().catch((err) => {
+      console.warn('Auto-initialize access permissions caught:', err);
+    });
 
     const cleanupOffline = initOfflineSyncListeners((isOnline, wasOffline) => {
       if (wasOffline) {

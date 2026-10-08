@@ -101,11 +101,11 @@ export const VoiceNavigationOverlay: React.FC<VoiceNavigationOverlayProps> = ({
       {/* Floating Compact Voice Controller Bar */}
       <div
         id="voice-navigation-floating-bar"
-        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center pointer-events-auto transition-all duration-300"
+        className="fixed bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center pointer-events-auto transition-all duration-300 max-w-[96vw]"
       >
         {/* Expanded Command Sheet / Drawer */}
         {isExpanded && (
-          <div className="mb-2.5 w-[92vw] max-w-lg p-4 rounded-3xl bg-[#0d121f]/95 backdrop-blur-2xl border border-indigo-500/40 shadow-2xl shadow-indigo-950/80 text-white animate-in fade-in slide-in-from-bottom-4 duration-200 space-y-3">
+          <div className="mb-2 w-[94vw] max-w-lg p-3 sm:p-4 rounded-3xl bg-[#0d121f]/95 backdrop-blur-2xl border border-indigo-500/40 shadow-2xl shadow-indigo-950/80 text-white animate-in fade-in slide-in-from-bottom-4 duration-200 space-y-3 max-h-[75vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-md">

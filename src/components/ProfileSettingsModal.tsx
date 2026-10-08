@@ -198,12 +198,24 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
     notifications: boolean;
     gpuHardware: boolean;
     analytics: boolean;
+    autoStartAccess?: boolean;
     hasConsented: boolean;
   }>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('icallog_cookie_permissions_v1') : null;
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return {
+          essential: true,
+          storage: true,
+          location: parsed.location ?? false,
+          mediaDevices: parsed.mediaDevices ?? true,
+          notifications: parsed.notifications ?? false,
+          gpuHardware: parsed.gpuHardware ?? true,
+          analytics: parsed.analytics ?? true,
+          autoStartAccess: parsed.autoStartAccess ?? true,
+          hasConsented: parsed.hasConsented ?? true,
+        };
       } catch {
         // fallback
       }
@@ -212,11 +224,12 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
       essential: true,
       storage: true,
       location: false,
-      mediaDevices: false,
+      mediaDevices: true,
       notifications: false,
       gpuHardware: true,
       analytics: true,
-      hasConsented: false,
+      autoStartAccess: true,
+      hasConsented: true,
     };
   });
 
@@ -4837,6 +4850,59 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
 
                 {/* Permissions Toggles List */}
                 <div className="space-y-2.5">
+                  {/* Auto-Start Access Request Setting (User requirement: Auto-start on by default so app runs ready on phone and laptop, user can turn off here) */}
+                  <div className="p-3.5 rounded-2xl bg-gradient-to-r from-indigo-950/70 via-slate-900 to-cyan-950/70 border border-indigo-500/50 flex items-center justify-between gap-3 shadow-md">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center shrink-0">
+                        <Cpu className="w-4 h-4 text-cyan-400" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                          <span>Auto-Start Access Permissions (ऑटो-स्टार्ट एक्सेस रिक्वेस्ट)</span>
+                          <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                            cookiePermissions.autoStartAccess !== false ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/50' : 'bg-slate-800 text-slate-400'
+                          }`}>
+                            {cookiePermissions.autoStartAccess !== false ? 'AUTO-ON (सक्रिय)' : 'MANUAL'}
+                          </span>
+                        </h4>
+                        <p className="text-[11px] text-slate-300 mt-0.5">
+                          App load hote hi media, 3D WebGL aur offline vault access permissions auto-start rahenge taaki phone aur computer dono par bina roke chalein. Ise yahan se switch off ya on kar sakte hain.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextVal = !(cookiePermissions.autoStartAccess !== false);
+                        const updated = { ...cookiePermissions, autoStartAccess: nextVal, hasConsented: true };
+                        setCookiePermissions(updated);
+                        localStorage.setItem('icallog_auto_start_permissions_v1', nextVal ? 'true' : 'false');
+                        try {
+                          localStorage.setItem('icallog_cookie_permissions_v1', JSON.stringify(updated));
+                        } catch {
+                          // ignore
+                        }
+                        onNotify(
+                          'Auto-Start Permission Updated',
+                          nextVal
+                            ? 'Auto-Start Access is now ON. App will start with permissions ready.'
+                            : 'Auto-Start Access is now OFF. Permissions must be approved manually.',
+                          'success'
+                        );
+                      }}
+                      className={`w-11 h-6 rounded-full p-1 transition-colors relative shrink-0 ${
+                        cookiePermissions.autoStartAccess !== false ? 'bg-cyan-500' : 'bg-slate-800'
+                      }`}
+                      title="Toggle Auto-Start Access"
+                    >
+                      <div
+                        className={`w-4 h-4 rounded-full bg-white shadow-md transition-transform ${
+                          cookiePermissions.autoStartAccess !== false ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
                   {/* 1. Essential Storage & Security Cookies */}
                   <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 shadow-sm">
                     <div className="flex items-center gap-3">

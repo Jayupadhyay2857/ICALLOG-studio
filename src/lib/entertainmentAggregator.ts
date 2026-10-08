@@ -1731,6 +1731,7 @@ export interface CharacterProfile {
   filmography: CharacterFilmographyItem[];
   studioPresets: CharacterStudioPresets;
   isSavedToRepo?: boolean;
+  isFavorite?: boolean;
   savedAt?: string;
   tags: string[];
 }
@@ -2072,26 +2073,108 @@ export const MASTER_CHARACTER_REPOSITORY: CharacterProfile[] = [
   },
 ];
 
+export const FAVORITE_CHARACTERS_STORAGE_KEY = 'icallog_favorite_characters_v1';
+
 /**
- * Fetch characters from Character Repository & TMDB
+ * Get all favorite character IDs stored in localStorage
+ */
+export function getFavoriteCharacterIds(): string[] {
+  try {
+    const stored = localStorage.getItem(FAVORITE_CHARACTERS_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+/**
+ * Check if a character is favorited
+ */
+export function isCharacterFavorite(characterId: string): boolean {
+  const favorites = getFavoriteCharacterIds();
+  return favorites.includes(characterId);
+}
+
+/**
+ * Toggle Favorite status for a character profile with localStorage persistence and server sync
+ */
+export async function toggleCharacterFavorite(
+  character: CharacterProfile,
+  userId: string = 'demo_user'
+): Promise<{ isFavorite: boolean; favorites: string[]; count: number }> {
+  let favorites = getFavoriteCharacterIds();
+  const exists = favorites.includes(character.id);
+  let newIsFavorite = false;
+
+  if (exists) {
+    favorites = favorites.filter((id) => id !== character.id);
+    newIsFavorite = false;
+  } else {
+    favorites.unshift(character.id);
+    newIsFavorite = true;
+  }
+
+  try {
+    localStorage.setItem(FAVORITE_CHARACTERS_STORAGE_KEY, JSON.stringify(favorites));
+    window.dispatchEvent(
+      new CustomEvent('icallog_character_favorite_toggled', {
+        detail: { characterId: character.id, isFavorite: newIsFavorite, character },
+      })
+    );
+  } catch (err) {
+    console.warn('[Character Favorites] LocalStorage save notice:', err);
+  }
+
+  // Server sync
+  try {
+    await fetch('/api/entertainment/character/favorite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ characterId: character.id, isFavorite: newIsFavorite, userId }),
+    });
+  } catch {
+    // ignore
+  }
+
+  return {
+    isFavorite: newIsFavorite,
+    favorites,
+    count: favorites.length,
+  };
+}
+
+/**
+ * Fetch characters from Character Repository & TMDB with favorite annotations
  */
 export async function fetchCharacterRepository(options?: {
   query?: string;
   category?: string;
   filterSaved?: boolean;
+  filterFavorites?: boolean;
   tmdbKey?: string;
   language?: string;
   userId?: string;
 }): Promise<{
   characters: CharacterProfile[];
   savedCount: number;
+  favoritesCount: number;
   isLiveTmdb: boolean;
   total: number;
 }> {
   const query = options?.query || '';
   const category = options?.category || 'all';
   const filterSaved = Boolean(options?.filterSaved);
+  const filterFavorites = Boolean(options?.filterFavorites);
   const userId = options?.userId || 'demo_user';
+  const favIds = new Set(getFavoriteCharacterIds());
+
+  let rawCharacters: CharacterProfile[] = [];
+  let savedCount = 0;
+  let isLiveTmdb = false;
 
   // 1. Try fetching from server API
   try {
@@ -2107,59 +2190,99 @@ export async function fetchCharacterRepository(options?: {
     if (res.ok) {
       const data = await res.json();
       if (data.success && Array.isArray(data.results) && data.results.length > 0) {
-        return {
-          characters: data.results,
-          savedCount: data.savedCount || 0,
-          isLiveTmdb: Boolean(data.isLiveTmdb),
-          total: data.total,
-        };
+        rawCharacters = data.results;
+        savedCount = data.savedCount || 0;
+        isLiveTmdb = Boolean(data.isLiveTmdb);
       }
     }
   } catch (err) {
     console.warn('[Character Repository] Server fetch notice, loading local master catalog:', err);
   }
 
-  // 2. Local fallback from master catalog & localStorage saved items
-  let savedLocal: CharacterProfile[] = [];
-  try {
-    const stored = localStorage.getItem('icallog_character_repo_saved_v1');
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) savedLocal = parsed;
+  // 2. Local fallback from master catalog & localStorage saved items if server didn't supply
+  if (rawCharacters.length === 0) {
+    let savedLocal: CharacterProfile[] = [];
+    try {
+      const stored = localStorage.getItem('icallog_character_repo_saved_v1');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) savedLocal = parsed;
+      }
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
-  }
 
-  const combined = [...savedLocal];
-  MASTER_CHARACTER_REPOSITORY.forEach((m) => {
-    if (!combined.some((c) => c.name.toLowerCase() === m.name.toLowerCase())) {
-      combined.push(m);
+    savedCount = savedLocal.length;
+    const combined = [...savedLocal];
+    MASTER_CHARACTER_REPOSITORY.forEach((m) => {
+      if (!combined.some((c) => c.name.toLowerCase() === m.name.toLowerCase())) {
+        combined.push(m);
+      }
+    });
+
+    let filtered = combined;
+    if (filterSaved) {
+      filtered = savedLocal;
+    } else if (category && category !== 'all') {
+      filtered = filtered.filter((c) => c.category === category || c.tags?.includes(category));
     }
-  });
 
-  let filtered = combined;
-  if (filterSaved) {
-    filtered = savedLocal;
-  } else if (category && category !== 'all') {
-    filtered = filtered.filter((c) => c.category === category || c.tags?.includes(category));
+    if (query) {
+      const q = query.toLowerCase();
+      filtered = filtered.filter((c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.franchise.toLowerCase().includes(q) ||
+        c.actorName.toLowerCase().includes(q) ||
+        c.visualTraits?.outfit?.toLowerCase().includes(q)
+      );
+    }
+
+    rawCharacters = filtered.length > 0 ? filtered : MASTER_CHARACTER_REPOSITORY;
   }
 
-  if (query) {
-    const q = query.toLowerCase();
-    filtered = filtered.filter((c) =>
-      c.name.toLowerCase().includes(q) ||
-      c.franchise.toLowerCase().includes(q) ||
-      c.actorName.toLowerCase().includes(q) ||
-      c.visualTraits.outfit.toLowerCase().includes(q)
-    );
-  }
+  // Annotate with isFavorite flag
+  const annotated = rawCharacters.map((c) => ({
+    ...c,
+    isFavorite: favIds.has(c.id) || Boolean(c.isFavorite),
+  }));
+
+  // Apply filterFavorites if requested
+  const finalResults = filterFavorites ? annotated.filter((c) => c.isFavorite) : annotated;
 
   return {
-    characters: filtered.length > 0 ? filtered : MASTER_CHARACTER_REPOSITORY,
-    savedCount: savedLocal.length,
-    isLiveTmdb: false,
-    total: filtered.length > 0 ? filtered.length : MASTER_CHARACTER_REPOSITORY.length,
+    characters: finalResults,
+    savedCount,
+    favoritesCount: favIds.size,
+    isLiveTmdb,
+    total: finalResults.length,
+  };
+}
+
+/**
+ * Generate fused crossover prompt for side-by-side Visual Comparison
+ */
+export function generateCrossoverPrompt(characters: CharacterProfile[]): {
+  imageStudioPrompt: string;
+  filmStudioScriptPrompt: string;
+  summary: string;
+} {
+  if (!characters || characters.length < 2) {
+    return {
+      imageStudioPrompt: '',
+      filmStudioScriptPrompt: '',
+      summary: 'Select 2 or more characters for comparison & crossover generation.',
+    };
+  }
+
+  const [charA, charB] = characters;
+  const imageStudioPrompt = `8k ultra-cinematic concept art of a mythical crossover showdown between ${charA.name} and ${charB.name}. ${charA.name} wearing ${charA.visualTraits?.outfit || 'iconic battle gear'} on left, facing ${charB.name} with ${charB.visualTraits?.outfit || 'signature costume'} on right. Dynamic opposing color palettes (${charA.visualTraits?.colorPalette?.[0] || '#3b82f6'} vs ${charB.visualTraits?.colorPalette?.[0] || '#ef4444'}), volumetric particles, rim lighting, Unreal Engine 5 render, IMAX 70mm composition.`;
+
+  const filmStudioScriptPrompt = `EXT. MULTIVERSE NEXUS - THE SHATTERED HORIZON - DUSK\n\nA crackling spatial rift separates two legendary worlds.\n\n${charA.name.toUpperCase()} stands braced, ${charA.visualTraits?.iconicItem || 'eyes focused'}.\n\n${charB.name.toUpperCase()} steps through the cosmic mist, exuding unwavering authority.\n\n${charA.name.toUpperCase()}\n"${charA.keyQuotes?.[0]?.text || "We don't yield here."}"\n\n${charB.name.toUpperCase()}\n"${charB.keyQuotes?.[0]?.text || "Then show me the strength of your universe."}"\n\nThe air superheats as their aura signatures ignite simultaneously.`;
+
+  return {
+    imageStudioPrompt,
+    filmStudioScriptPrompt,
+    summary: `Crossover Arena: ${charA.name} (${charA.franchise}) vs ${charB.name} (${charB.franchise})`,
   };
 }
 

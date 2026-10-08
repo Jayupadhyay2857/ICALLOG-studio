@@ -28,7 +28,7 @@ export const WelcomeBlog: React.FC<WelcomeBlogProps> = ({ onSelectTab, user, onO
           </h1>
 
           <p className="text-sm sm:text-base text-slate-300 max-w-3xl leading-relaxed">
-            Hello, <strong className="text-white">{(!user || user.email === 'creator@icallog.studio' || user.name === 'Profile User' || !user.name) ? 'User' : user.name.split('(')[0].trim()}</strong>! This platform is engineered to empower directors, musicians, 3D artists, and creators with professional-grade generative AI tools. Explore 14+ integrated creative suites featuring advanced screenwriting, multi-lingual cinema styles, music production, and WebGL 3D rendering.
+            Hello, <strong className="text-white">{user?.name || user?.username || 'Creative User'}</strong>! This platform is engineered to empower directors, musicians, 3D artists, and creators with professional-grade generative AI tools. Explore 14+ integrated creative suites featuring advanced screenwriting, multi-lingual cinema styles, music production, and WebGL 3D rendering.
           </p>
 
           <div className="flex flex-wrap items-center gap-4 pt-2">

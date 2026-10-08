@@ -24,6 +24,7 @@ export interface CookiePermissions {
   notifications: boolean; // Browser Push Notifications
   gpuHardware: boolean; // WebGL & GPU Hardware Acceleration
   analytics: boolean; // Performance Metrics
+  autoStartAccess?: boolean; // Auto-activate permissions on app start (default: ON)
   hasConsented: boolean; // User clicked Accept/Decline
 }
 
@@ -42,24 +43,45 @@ export const CookieConsentModal: React.FC<CookieConsentModalProps> = ({
     const saved = typeof window !== 'undefined' ? localStorage.getItem('icallog_cookie_permissions_v1') : null;
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return {
+          essential: true,
+          storage: true,
+          location: parsed.location ?? false,
+          mediaDevices: parsed.mediaDevices ?? true,
+          notifications: parsed.notifications ?? false,
+          gpuHardware: parsed.gpuHardware ?? true,
+          analytics: parsed.analytics ?? true,
+          autoStartAccess: parsed.autoStartAccess ?? true,
+          hasConsented: parsed.hasConsented ?? true,
+        };
       } catch {
         // fallback
       }
     }
+    // Default to AUTO-START ACTIVE so app starts on and user can turn off later in settings
     return {
       essential: true,
       storage: true,
       location: false,
-      mediaDevices: false,
+      mediaDevices: true,
       notifications: false,
       gpuHardware: true,
       analytics: true,
-      hasConsented: false,
+      autoStartAccess: true,
+      hasConsented: true,
     };
   });
 
-  const [showBanner, setShowBanner] = useState(!permissions.hasConsented);
+  // Only show as blocking modal if user explicitly opens it or has disabled auto-start
+  const [showBanner, setShowBanner] = useState(() => {
+    if (externalIsOpen !== undefined) return externalIsOpen;
+    const autoStartSaved = typeof window !== 'undefined' ? localStorage.getItem('icallog_auto_start_permissions_v1') : null;
+    if (autoStartSaved === 'false') {
+      return !permissions.hasConsented;
+    }
+    return false;
+  });
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [locationStatus, setLocationStatus] = useState<string>('Not requested');
   const [storageStats, setStorageStats] = useState<{ usedKb: number; itemsCount: number }>({ usedKb: 0, itemsCount: 0 });
@@ -225,6 +247,52 @@ export const CookieConsentModal: React.FC<CookieConsentModalProps> = ({
 
           {/* Toggle Accordion / List */}
           <div className="space-y-2.5">
+            {/* Auto-Start Access Request Setting (User control: ON at app start, can be turned OFF anytime in settings) */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-indigo-950/70 via-slate-900 to-cyan-950/70 border border-indigo-500/50 flex items-center justify-between gap-3 shadow-md">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center shrink-0">
+                  <Cpu className="w-4 h-4 text-cyan-400" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                    <span>Auto-Start Access Permissions (ऑटो-स्टार्ट एक्सेस रिक्वेस्ट)</span>
+                    <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                      permissions.autoStartAccess !== false ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/50' : 'bg-slate-800 text-slate-400'
+                    }`}>
+                      {permissions.autoStartAccess !== false ? 'AUTO-ON (सक्रिय)' : 'MANUAL'}
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-slate-300 mt-0.5">
+                    App shuru hone par saare access permissions automatically ON rahenge taaki studios turant chalein. Aap ise yahan se kabhi bhi OFF ya ON kar sakte hain.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextVal = !(permissions.autoStartAccess !== false);
+                  const updated = { ...permissions, autoStartAccess: nextVal };
+                  setPermissions(updated);
+                  localStorage.setItem('icallog_auto_start_permissions_v1', nextVal ? 'true' : 'false');
+                  try {
+                    localStorage.setItem('icallog_cookie_permissions_v1', JSON.stringify({ ...updated, hasConsented: true }));
+                  } catch {
+                    // ignore
+                  }
+                }}
+                className={`w-11 h-6 rounded-full p-1 transition-colors relative shrink-0 ${
+                  permissions.autoStartAccess !== false ? 'bg-cyan-500' : 'bg-slate-800'
+                }`}
+                title="Toggle Auto-Start Access"
+              >
+                <div
+                  className={`w-4 h-4 rounded-full bg-white shadow-md transition-transform ${
+                    permissions.autoStartAccess !== false ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
             {/* 1. Essential Cookies & Storage */}
             <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
